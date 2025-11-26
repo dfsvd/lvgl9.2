@@ -17,6 +17,12 @@ include_directories(
     ${PROJECT_SOURCE_DIR}/include
 )
 
+# 添加 cJSON 库
+add_library(cjson STATIC 
+    third_party/cjson/cJSON.c
+)
+target_include_directories(cjson PUBLIC third_party/cjson)
+
 # 添加 LVGL 库
 add_subdirectory(third_party/lvgl)
 target_include_directories(lvgl PUBLIC 
@@ -31,6 +37,7 @@ target_link_libraries(main
     PUBLIC 
     lvgl 
     lvgl::demos 
+    cjson
     m 
     pthread 
 )
