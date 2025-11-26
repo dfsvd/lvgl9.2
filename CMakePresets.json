@@ -1,0 +1,13 @@
+{
+        "version": 3,
+        "configurePresets": [
+          {
+            "name": "arm-linux-cross-v5",
+            "displayName": "ARM Linux GCC 15.2.1",
+            "description": "Cross-compile using new hard-float toolchain.",
+            "cacheVariables": {
+              "CMAKE_TOOLCHAIN_FILE": "${sourceDir}/Toolchain-arm.cmake"
+            }
+          }
+        ]
+      }
