@@ -3,6 +3,9 @@ build/
 bin/
 out/
 
+# clangd 缓存
+.cache/
+
 # CMake 生成文件
 CMakeCache.txt
 CMakeFiles/
