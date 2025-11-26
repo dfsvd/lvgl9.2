@@ -10,7 +10,8 @@ cmake_install.cmake
 Makefile
 
 # 编辑器和 IDE
-.vscode/
+.vscode/*
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
