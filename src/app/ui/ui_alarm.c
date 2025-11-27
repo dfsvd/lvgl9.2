@@ -44,7 +44,6 @@ static void alarm_overlay_event(lv_event_t *e) {
     return;
   }
 
-  /* Fallback: use press/release delta if gesture not available */
   if (code == LV_EVENT_PRESSED) {
     lv_indev_t *ind = lv_indev_get_act();
     lv_point_t p;
@@ -193,45 +192,58 @@ void ui_alarm_init(void) {
   if (scr_alarm)
     return;
   scr_alarm = lv_obj_create(NULL);
+  /* overall background: light iOS-like gray */
+  lv_obj_set_style_bg_color(scr_alarm, lv_color_hex(0xF2F2F7), 0);
+  lv_obj_set_style_bg_opa(scr_alarm, LV_OPA_COVER, 0);
   /* header: title + countdown */
   hdr = lv_obj_create(scr_alarm);
-  lv_obj_set_size(hdr, LV_PCT(100), 56);
+  lv_obj_set_size(hdr, LV_PCT(100), 88);
   lv_obj_align(hdr, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_style_pad_all(hdr, 8, 0);
-  lv_obj_set_style_bg_color(hdr, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_color(hdr, lv_color_hex(0xF2F2F7), 0);
+  lv_obj_set_style_bg_opa(hdr, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(hdr, 0, 0);
+  lv_obj_set_style_radius(hdr, 0, 0);
 
   lbl_title = lv_label_create(hdr);
   lv_label_set_text(lbl_title, "闹钟");
   lv_obj_set_style_text_font(lbl_title, &PingFangSC_Regular_28, 0);
   lv_obj_set_style_text_color(lbl_title, lv_color_hex(0x1C1C1E), 0);
-  lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 14, 6);
+  lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 16, 6);
 
-  /* top-right add button '+' */
+  /* top-right + as text link (flat, matches design) */
   btn_add = lv_label_create(hdr);
   lv_label_set_text(btn_add, "+");
-  lv_obj_set_style_text_font(btn_add, &PingFangSC_Semibold_40, 0);
   lv_obj_set_style_text_color(btn_add, lv_color_hex(0x007AFF), 0);
-  lv_obj_align(btn_add, LV_ALIGN_RIGHT_MID, -12, 4);
+  lv_obj_set_style_text_font(btn_add, &PingFangSC_Semibold_40, 0);
+  lv_obj_align(btn_add, LV_ALIGN_RIGHT_MID, -8, 0);
   lv_obj_add_event_cb(btn_add, add_card_cb, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_flag(btn_add, LV_OBJ_FLAG_CLICKABLE);
 
   /* Move countdown out of header into a content area below header (iOS style)
    */
-  lv_obj_t *cnt_area = lv_obj_create(scr_alarm);
-  lv_obj_set_size(cnt_area, LV_PCT(100), 64);
-  lv_obj_align(cnt_area, LV_ALIGN_TOP_MID, 0, 56);
-  lv_obj_set_style_bg_color(cnt_area, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_set_style_bg_opa(cnt_area, LV_OPA_TRANSP, 0);
-
-  lbl_countdown = lv_label_create(cnt_area);
+  /* Countdown text below header (plain, centered) */
+  lbl_countdown = lv_label_create(scr_alarm);
   lv_label_set_text(lbl_countdown, "");
   lv_obj_set_style_text_font(lbl_countdown, &PingFangSC_Regular_24, 0);
   lv_obj_set_style_text_color(lbl_countdown, lv_color_hex(0x1C1C1E), 0);
-  lv_obj_align(lbl_countdown, LV_ALIGN_CENTER, 0, 8);
+  lv_obj_align(lbl_countdown, LV_ALIGN_TOP_MID, 0, 88);
+  lv_obj_set_style_pad_top(lbl_countdown, 30, 0);
+  lv_obj_set_style_pad_bottom(lbl_countdown, 40, 0);
 
   list = lv_list_create(scr_alarm);
-  lv_obj_set_size(list, LV_PCT(100), LV_PCT(72));
-  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 132);
+  lv_obj_set_size(list, LV_PCT(100), LV_PCT(68));
+  /* position list below countdown text with spacing */
+  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 88 + 30 + 30);
+  /* hide list scrollbar (design removes visible scrollbars) */
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+  /* add spacing between list items */
+  lv_obj_set_style_pad_row(list, 12, 0);
+  /* list should be visually transparent (no enclosing white card) */
+  lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(list, 0, 0);
+  /* hide list scrollbar (design removes visible scrollbars) */
+  lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
 
   /* bind swipe detection to the screen object so children still receive clicks
    */
@@ -295,33 +307,49 @@ void ui_alarm_refresh(void) {
     }
   }
   char buf[128];
+  /* if there are no alarms, ensure the list remains transparent and has
+     vertical padding so the placeholder text has space above and below (matches
+     design) */
+  if (n == 0) {
+    lv_obj_set_style_pad_top(list, 24, 0);
+    lv_obj_set_style_pad_bottom(list, 24, 0);
+  }
+
+  /* when n==0 we simply keep the placeholder text; no sample cards to show */
+  if (n == 0) {
+    return;
+  }
+
   for (size_t i = 0; i < n; ++i) {
     /* Render each alarm as a card-like container */
     lv_obj_t *card = lv_obj_create(list);
-    lv_obj_set_size(card, lv_pct(94), 66);
-    lv_obj_set_style_pad_all(card, 10, 0);
-    lv_obj_set_style_radius(card, 14, 0);
+    lv_obj_set_size(card, lv_pct(94), 80);
+    lv_obj_set_style_pad_all(card, 15, 0);
+    lv_obj_set_style_radius(card, 12, 0);
     lv_obj_set_style_bg_color(card, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_border_width(card, 0, 0);
     lv_obj_set_style_shadow_color(card, lv_color_hex(0x000000), 0);
     lv_obj_set_style_shadow_opa(card, LV_OPA_10, 0);
     lv_obj_set_style_shadow_width(card, 6, 0);
+    /* spacing between cards */
+    lv_obj_set_style_margin_bottom(card, 12, 0);
+    /* cards should not be independently scrollable or show scrollbars */
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_scrollbar_mode(card, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_style_width(card, 0, LV_PART_SCROLLBAR);
 
     /* small period label */
-    lv_obj_t *lbl_period = lv_label_create(card);
-    lv_label_set_text(lbl_period, arr[i].hour < 12 ? "上午" : "下午");
-    lv_obj_set_style_text_font(lbl_period, &PingFangSC_Regular_14, 0);
-    lv_obj_set_style_text_color(lbl_period, lv_color_hex(0x8E8E93), 0);
-    lv_obj_align(lbl_period, LV_ALIGN_LEFT_MID, 14, -14);
-
-    /* big time */
+    /* big time (include period to avoid duplicate small period) */
     char tbuf[16];
     snprintf(tbuf, sizeof(tbuf), "%02d:%02d", arr[i].hour, arr[i].minute);
     lv_obj_t *lbl_time = lv_label_create(card);
-    lv_label_set_text(lbl_time, tbuf);
+    char fulltime[32];
+    snprintf(fulltime, sizeof(fulltime), "%s %s",
+             (arr[i].hour < 12 ? "上午" : "下午"), tbuf);
+    lv_label_set_text(lbl_time, fulltime);
     lv_obj_set_style_text_font(lbl_time, &PingFangSC_Semibold_38, 0);
     lv_obj_set_style_text_color(lbl_time, lv_color_hex(0x1C1C1E), 0);
-    lv_obj_align(lbl_time, LV_ALIGN_LEFT_MID, 56, -4);
+    lv_obj_align(lbl_time, LV_ALIGN_LEFT_MID, 56, -2);
 
     /* repeat info */
     lv_obj_t *lbl_repeat = lv_label_create(card);
@@ -351,7 +379,7 @@ void ui_alarm_refresh(void) {
     lv_label_set_text(lbl_repeat, rbuf);
     lv_obj_set_style_text_font(lbl_repeat, &PingFangSC_Regular_18, 0);
     lv_obj_set_style_text_color(lbl_repeat, lv_color_hex(0x8E8E93), 0);
-    lv_obj_align(lbl_repeat, LV_ALIGN_LEFT_MID, 56, 18);
+    lv_obj_align(lbl_repeat, LV_ALIGN_LEFT_MID, 56, 22);
 
     /* capsule switch */
     lv_obj_t *sw = lv_switch_create(card);
@@ -359,9 +387,15 @@ void ui_alarm_refresh(void) {
       lv_obj_add_state(sw, LV_STATE_CHECKED);
     lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -18, 0);
     /* style switch thumb and indicator */
-    lv_obj_set_style_bg_color(sw, lv_color_hex(0xE6E9F2), 0);
+    lv_obj_set_style_bg_color(sw, lv_color_hex(0xE9E9EB), 0);
     lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sw, 0, 0);
+    /* when enabled, make indicator green and add slight shadow */
+    if (arr[i].enabled) {
+      lv_obj_set_style_bg_color(sw, lv_color_hex(0x34C759), LV_PART_INDICATOR);
+      lv_obj_set_style_shadow_width(sw, 4, LV_PART_INDICATOR);
+      lv_obj_set_style_shadow_opa(sw, LV_OPA_10, LV_PART_INDICATOR);
+    }
     /* switch event toggles enable */
     lv_obj_add_event_cb(sw, sw_event_cb, LV_EVENT_VALUE_CHANGED,
                         (void *)(size_t)i);
@@ -372,27 +406,13 @@ void ui_alarm_refresh(void) {
     /* also listen for swipe gestures on the card itself */
     lv_obj_add_event_cb(card, alarm_overlay_event, LV_EVENT_ALL, NULL);
     lv_obj_add_flag(card, LV_OBJ_FLAG_CLICKABLE);
+    /* make the time label clickable too (easier target) */
+    lv_obj_add_flag(lbl_time, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(lbl_time, card_click_cb, LV_EVENT_CLICKED,
+                        (void *)(size_t)i);
   }
 
-  /* add final card as Add entry */
-  lv_obj_t *add_card = lv_obj_create(list);
-  lv_obj_set_size(add_card, lv_pct(94), 66);
-  lv_obj_set_style_pad_all(add_card, 10, 0);
-  lv_obj_set_style_radius(add_card, 14, 0);
-  lv_obj_set_style_bg_color(add_card, lv_color_hex(0x0A84FF), 0);
-  lv_obj_set_style_bg_opa(add_card, LV_OPA_COVER, 0);
-  lv_obj_set_style_shadow_color(add_card, lv_color_hex(0x0A62D6), 0);
-  lv_obj_set_style_shadow_opa(add_card, LV_OPA_30, 0);
-  lv_obj_set_style_shadow_width(add_card, 8, 0);
-  lv_obj_t *lbl_plus = lv_label_create(add_card);
-  lv_label_set_text(lbl_plus, "添加闹钟");
-  lv_obj_set_style_text_font(lbl_plus, &PingFangSC_Regular_18, 0);
-  lv_obj_set_style_text_color(lbl_plus, lv_color_hex(0xFFFFFF), 0);
-  lv_obj_align(lbl_plus, LV_ALIGN_CENTER, 0, 0);
-  /* bind add card click to open add dialog */
-  lv_obj_add_event_cb(add_card, add_card_cb, LV_EVENT_CLICKED, NULL);
-  /* listen for swipe on add card too */
-  lv_obj_add_event_cb(add_card, alarm_overlay_event, LV_EVENT_ALL, NULL);
+  /* Bottom add-card removed: use top-right + button to add alarms */
 }
 
 /* Card click callback: fetch alarm array and open edit dialog */
