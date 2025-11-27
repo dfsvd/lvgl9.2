@@ -93,6 +93,7 @@ lv_font_conv --font Roboto-Bold.ttf -r 0x30-0x39 --size 150 --bpp 4 --format lvg
 # 字体源码目录
 file(GLOB FONT_SOURCES "${CMAKE_SOURCE_DIR}/assets/fonts/*.c")
 add_library(fonts STATIC ${FONT_SOURCES})
+/* 添加 LVGL include，确保字体源文件中引用的 "lvgl/lvgl.h" 可以找到 */
 target_include_directories(fonts PUBLIC ${CMAKE_SOURCE_DIR}/third_party/lvgl)
 
 # 链接到 main
@@ -100,6 +101,27 @@ target_link_libraries(main PRIVATE fonts)
 ```
 
 确保 `third_party/lvgl` 在项目 include 路径中，或根据你的项目结构调整路径。
+
+### 构建注意
+
+- 如果编译时出现类似 `Too large font or glyphs in <FONTNAME>. Enable LV_FONT_FMT_TXT_LARGE in lv_conf.h` 的错误，说明该字体需要启用 LVGL 的大字体支持。请在仓库的 `config/lv_conf.h` 中将：
+
+```c
+/*Enable handling large font and/or fonts with a lot of characters.*/
+#define LV_FONT_FMT_TXT_LARGE 1
+```
+
+保存后重新运行 CMake 并构建。
+
+### 提交规范
+
+- 请不要把 `.bak` 或临时替换文件提交到 Git（例如使用 `git status` 检查）。建议在运行批处理修复后用 `git add assets/fonts/*.c` 精确添加需要的文件。
+- 可在项目根 `.gitignore` 中加入规则以忽略常见备份后缀：
+
+```
+*.bak
+*.orig
+```
 
 
 ## 在代码中使用字体（LVGL 示例）
@@ -151,11 +173,14 @@ for f in "${fonts[@]}"; do
     name="LXGWWenKaiMono_Light_$s"
     lv_font_conv --font "$FONT_DIR/$f" -r 0x20-0x7f -r 0x4e00-0x9fff --size "$s" --bpp 4 --format lvgl --name "$name" -o "$OUT_DIR/${name}.c"
 
-    # 修复 static_bitmap 行
-    sed -i 's/static_bitmap = 0,/\/\/ static_bitmap = 0,/' "$OUT_DIR/${name}.c"
+    # 修复 static_bitmap 行（更稳健：只注释包含 .static_bitmap 的行）
+    sed -i.bak -E 's/^[[:space:]]*\.static_bitmap[[:space:]]*=[[:space:]]*0,?/\/\/ &/' "$OUT_DIR/${name}.c" || true
 
-    # 修复 include 路径
-    sed -i 's#"lvgl/lvgl.h"#"third_party/lvgl/lvgl.h"#' "$OUT_DIR/${name}.c"
+    # 修复 include 路径（如果需要）
+    sed -i.bak 's#"lvgl/lvgl.h"#"third_party/lvgl/lvgl.h"#' "$OUT_DIR/${name}.c" || true
+
+    # 清理 .bak（如果你确认修改正确再删除）
+    rm -f "$OUT_DIR/${name}.c.bak"
   done
 done
 ```

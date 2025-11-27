@@ -10,7 +10,7 @@
 
 static lv_obj_t *scr_alarm = NULL;
 static lv_obj_t *list = NULL;
-static lv_obj_t *btn_add = NULL;
+static lv_obj_t *btn_add = NULL; /* top-right add button */
 static lv_obj_t *scr_prev = NULL;
 static lv_coord_t touch_start_x_alarm = 0;
 static lv_obj_t *hdr = NULL;
@@ -195,24 +195,43 @@ void ui_alarm_init(void) {
   scr_alarm = lv_obj_create(NULL);
   /* header: title + countdown */
   hdr = lv_obj_create(scr_alarm);
-  lv_obj_set_size(hdr, LV_PCT(100), 64);
+  lv_obj_set_size(hdr, LV_PCT(100), 56);
   lv_obj_align(hdr, LV_ALIGN_TOP_MID, 0, 0);
-  lv_obj_set_style_pad_all(hdr, 4, 0);
-  lv_obj_set_style_bg_opa(hdr, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_pad_all(hdr, 8, 0);
+  lv_obj_set_style_bg_color(hdr, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(hdr, LV_OPA_COVER, 0);
 
   lbl_title = lv_label_create(hdr);
   lv_label_set_text(lbl_title, "闹钟");
-  lv_obj_set_style_text_font(lbl_title, &LXGWWenKaiMono_Light_18, 0);
-  lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 8, 0);
+  lv_obj_set_style_text_font(lbl_title, &PingFangSC_Regular_28, 0);
+  lv_obj_set_style_text_color(lbl_title, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_align(lbl_title, LV_ALIGN_LEFT_MID, 14, 6);
 
-  lbl_countdown = lv_label_create(hdr);
+  /* top-right add button '+' */
+  btn_add = lv_label_create(hdr);
+  lv_label_set_text(btn_add, "+");
+  lv_obj_set_style_text_font(btn_add, &PingFangSC_Semibold_40, 0);
+  lv_obj_set_style_text_color(btn_add, lv_color_hex(0x007AFF), 0);
+  lv_obj_align(btn_add, LV_ALIGN_RIGHT_MID, -12, 4);
+  lv_obj_add_event_cb(btn_add, add_card_cb, LV_EVENT_CLICKED, NULL);
+
+  /* Move countdown out of header into a content area below header (iOS style)
+   */
+  lv_obj_t *cnt_area = lv_obj_create(scr_alarm);
+  lv_obj_set_size(cnt_area, LV_PCT(100), 64);
+  lv_obj_align(cnt_area, LV_ALIGN_TOP_MID, 0, 56);
+  lv_obj_set_style_bg_color(cnt_area, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_bg_opa(cnt_area, LV_OPA_TRANSP, 0);
+
+  lbl_countdown = lv_label_create(cnt_area);
   lv_label_set_text(lbl_countdown, "");
-  lv_obj_set_style_text_font(lbl_countdown, &LXGWWenKaiMono_Light_14, 0);
-  lv_obj_align(lbl_countdown, LV_ALIGN_TOP_MID, 0, 22);
+  lv_obj_set_style_text_font(lbl_countdown, &PingFangSC_Regular_24, 0);
+  lv_obj_set_style_text_color(lbl_countdown, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_align(lbl_countdown, LV_ALIGN_CENTER, 0, 8);
 
   list = lv_list_create(scr_alarm);
-  lv_obj_set_size(list, LV_PCT(100), LV_PCT(80));
-  lv_obj_align(list, LV_ALIGN_CENTER, 0, 36);
+  lv_obj_set_size(list, LV_PCT(100), LV_PCT(72));
+  lv_obj_align(list, LV_ALIGN_TOP_MID, 0, 132);
 
   /* bind swipe detection to the screen object so children still receive clicks
    */
@@ -279,25 +298,30 @@ void ui_alarm_refresh(void) {
   for (size_t i = 0; i < n; ++i) {
     /* Render each alarm as a card-like container */
     lv_obj_t *card = lv_obj_create(list);
-    lv_obj_set_size(card, lv_pct(96), 70);
-    lv_obj_set_style_pad_all(card, 8, 0);
-    lv_obj_set_style_radius(card, 6, 0);
-    lv_obj_set_style_bg_color(card, lv_color_hex(0xffffff), 0);
-    lv_obj_set_style_border_width(card, 1, 0);
+    lv_obj_set_size(card, lv_pct(94), 66);
+    lv_obj_set_style_pad_all(card, 10, 0);
+    lv_obj_set_style_radius(card, 14, 0);
+    lv_obj_set_style_bg_color(card, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_border_width(card, 0, 0);
+    lv_obj_set_style_shadow_color(card, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_10, 0);
+    lv_obj_set_style_shadow_width(card, 6, 0);
 
     /* small period label */
     lv_obj_t *lbl_period = lv_label_create(card);
     lv_label_set_text(lbl_period, arr[i].hour < 12 ? "上午" : "下午");
-    lv_obj_set_style_text_font(lbl_period, &LXGWWenKaiMono_Light_14, 0);
-    lv_obj_align(lbl_period, LV_ALIGN_LEFT_MID, 8, -10);
+    lv_obj_set_style_text_font(lbl_period, &PingFangSC_Regular_14, 0);
+    lv_obj_set_style_text_color(lbl_period, lv_color_hex(0x8E8E93), 0);
+    lv_obj_align(lbl_period, LV_ALIGN_LEFT_MID, 14, -14);
 
     /* big time */
     char tbuf[16];
     snprintf(tbuf, sizeof(tbuf), "%02d:%02d", arr[i].hour, arr[i].minute);
     lv_obj_t *lbl_time = lv_label_create(card);
     lv_label_set_text(lbl_time, tbuf);
-    lv_obj_set_style_text_font(lbl_time, &LXGWWenKaiMono_Light_24, 0);
-    lv_obj_align(lbl_time, LV_ALIGN_LEFT_MID, 50, -6);
+    lv_obj_set_style_text_font(lbl_time, &PingFangSC_Semibold_38, 0);
+    lv_obj_set_style_text_color(lbl_time, lv_color_hex(0x1C1C1E), 0);
+    lv_obj_align(lbl_time, LV_ALIGN_LEFT_MID, 56, -4);
 
     /* repeat info */
     lv_obj_t *lbl_repeat = lv_label_create(card);
@@ -325,14 +349,19 @@ void ui_alarm_refresh(void) {
       }
     }
     lv_label_set_text(lbl_repeat, rbuf);
-    lv_obj_set_style_text_font(lbl_repeat, &LXGWWenKaiMono_Light_14, 0);
-    lv_obj_align(lbl_repeat, LV_ALIGN_LEFT_MID, 50, 14);
+    lv_obj_set_style_text_font(lbl_repeat, &PingFangSC_Regular_18, 0);
+    lv_obj_set_style_text_color(lbl_repeat, lv_color_hex(0x8E8E93), 0);
+    lv_obj_align(lbl_repeat, LV_ALIGN_LEFT_MID, 56, 18);
 
     /* capsule switch */
     lv_obj_t *sw = lv_switch_create(card);
     if (arr[i].enabled)
       lv_obj_add_state(sw, LV_STATE_CHECKED);
-    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_align(sw, LV_ALIGN_RIGHT_MID, -18, 0);
+    /* style switch thumb and indicator */
+    lv_obj_set_style_bg_color(sw, lv_color_hex(0xE6E9F2), 0);
+    lv_obj_set_style_bg_opa(sw, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(sw, 0, 0);
     /* switch event toggles enable */
     lv_obj_add_event_cb(sw, sw_event_cb, LV_EVENT_VALUE_CHANGED,
                         (void *)(size_t)i);
@@ -347,14 +376,18 @@ void ui_alarm_refresh(void) {
 
   /* add final card as Add entry */
   lv_obj_t *add_card = lv_obj_create(list);
-  lv_obj_set_size(add_card, lv_pct(96), 70);
-  lv_obj_set_style_pad_all(add_card, 8, 0);
-  lv_obj_set_style_radius(add_card, 6, 0);
-  lv_obj_set_style_bg_color(add_card, lv_color_hex(0xf6f6f8), 0);
-  lv_obj_set_style_border_width(add_card, 1, 0);
+  lv_obj_set_size(add_card, lv_pct(94), 66);
+  lv_obj_set_style_pad_all(add_card, 10, 0);
+  lv_obj_set_style_radius(add_card, 14, 0);
+  lv_obj_set_style_bg_color(add_card, lv_color_hex(0x0A84FF), 0);
+  lv_obj_set_style_bg_opa(add_card, LV_OPA_COVER, 0);
+  lv_obj_set_style_shadow_color(add_card, lv_color_hex(0x0A62D6), 0);
+  lv_obj_set_style_shadow_opa(add_card, LV_OPA_30, 0);
+  lv_obj_set_style_shadow_width(add_card, 8, 0);
   lv_obj_t *lbl_plus = lv_label_create(add_card);
   lv_label_set_text(lbl_plus, "添加闹钟");
-  lv_obj_set_style_text_font(lbl_plus, &LXGWWenKaiMono_Light_18, 0);
+  lv_obj_set_style_text_font(lbl_plus, &PingFangSC_Regular_18, 0);
+  lv_obj_set_style_text_color(lbl_plus, lv_color_hex(0xFFFFFF), 0);
   lv_obj_align(lbl_plus, LV_ALIGN_CENTER, 0, 0);
   /* bind add card click to open add dialog */
   lv_obj_add_event_cb(add_card, add_card_cb, LV_EVENT_CLICKED, NULL);

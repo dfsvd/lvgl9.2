@@ -52,3 +52,34 @@ lv_obj_set_style_text_font(weather_icon, &MapleMono_NF_CN_SemiBold_64, 0);
 4. 下载生成的 C 文件
 
 详细转换方法请参考项目文档。
+
+---
+
+**项目注意事项（重要）**
+
+- **static_bitmap 修复**: 部分由字体转换工具生成的 `.c` 文件会包含 `static_bitmap = 0,` 这样的字段，会在某些编译器或 LVGL 组合下引发问题。请在 `assets/fonts/*.c` 中检查并注释或移除该行。例如：
+
+```c
+// .static_bitmap = 0,
+```
+
+- **不要提交 `.bak` 备份文件**: 批量替换或 sed 修复时常会生成 `.bak` 文件。提交时请确保只添加需要的 `.c` 文件，忽略或删除 `.bak`（例如在 `.gitignore` 中排除或手动清理）。
+
+- **启用大字体支持**: 如果你的字体文件很大（例如 48px 的中文字体），编译时可能会出现 `#error "Too large font... Enable LV_FONT_FMT_TXT_LARGE in lv_conf.h"`。在这种情况下，请在项目配置文件 `config/lv_conf.h` 中将 `LV_FONT_FMT_TXT_LARGE` 设置为 `1`：
+
+```c
+/* Enable handling large font and/or fonts with a lot of characters */
+#define LV_FONT_FMT_TXT_LARGE 1
+```
+
+- **LVGL include 路径**: 生成的 `.c` 文件通常会包含 `#include "lvgl/lvgl.h"`。在本项目中 LVGL 源代码位于 `third_party/lvgl`，构建时已在 CMake 中为 `fonts` 静态库添加 include 路径：
+
+```cmake
+target_include_directories(fonts PUBLIC ${CMAKE_SOURCE_DIR}/third_party/lvgl)
+```
+
+- **CMake 集成**: 我们在根 CMakeLists 中将 `assets/fonts/*.c` 编译为静态库 `fonts` 并链接到 `main`。如果新增字体请确认 `file(GLOB ...)` 能拾取到这些文件，或手动在 CMake 中添加。
+
+---
+
+如果需要，我可以把上述修复脚本或常用 sed 命令添加到 `scripts/`，帮助在生成后自动处理文件。

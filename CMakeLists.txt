@@ -28,6 +28,7 @@ target_include_directories(fonts PUBLIC
     ${PROJECT_SOURCE_DIR}/assets
     ${PROJECT_SOURCE_DIR}
     ${PROJECT_SOURCE_DIR}/include/app
+    ${PROJECT_SOURCE_DIR}/third_party/lvgl
 )
 
 # 添加 cJSON 库
