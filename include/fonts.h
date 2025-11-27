@@ -33,6 +33,18 @@ LV_FONT_DECLARE(Roboto_Bold_320);
 LV_FONT_DECLARE(MapleMono_NF_CN_SemiBold_38);
 LV_FONT_DECLARE(MapleMono_NF_CN_SemiBold_64);
 
+/*********************
+ * PingFang SC 字体（项目新加入）
+ *********************/
+LV_FONT_DECLARE(PingFangSC_Regular_14);
+LV_FONT_DECLARE(PingFangSC_Regular_18);
+LV_FONT_DECLARE(PingFangSC_Regular_24);
+LV_FONT_DECLARE(PingFangSC_Regular_28);
+
+LV_FONT_DECLARE(PingFangSC_Semibold_38);
+LV_FONT_DECLARE(PingFangSC_Semibold_40);
+LV_FONT_DECLARE(PingFangSC_Semibold_48);
+
 #ifdef __cplusplus
 }
 #endif
