@@ -9,8 +9,23 @@
 
 static lv_obj_t *scr_alarm = NULL;
 static lv_obj_t *list = NULL;
-static lv_obj_t *btn_back = NULL;
 static lv_obj_t *btn_add = NULL;
+static lv_obj_t *scr_prev = NULL;
+static lv_coord_t touch_start_x_alarm = 0;
+
+static void alarm_overlay_event(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  lv_indev_t *ind = lv_indev_get_act();
+  lv_point_t p;
+  lv_indev_get_point(ind, &p);
+  if (code == LV_EVENT_PRESSED) {
+    touch_start_x_alarm = p.x;
+  } else if (code == LV_EVENT_RELEASED) {
+    if (touch_start_x_alarm - p.x > 80) { // left swipe
+      ui_alarm_hide();
+    }
+  }
+}
 
 static void item_event_cb(lv_event_t *e) {
   lv_obj_t *btn = lv_event_get_target(e);
@@ -28,10 +43,7 @@ static void item_event_cb(lv_event_t *e) {
   ui_alarm_refresh();
 }
 
-static void back_event_cb(lv_event_t *e) {
-  (void)e;
-  ui_alarm_hide();
-}
+/* Back button removed; use left-swipe to return to previous screen */
 
 static void add_event_cb(lv_event_t *e) {
   (void)e;
@@ -60,11 +72,11 @@ void ui_alarm_init(void) {
   lv_obj_set_size(list, LV_PCT(100), LV_PCT(80));
   lv_obj_align(list, LV_ALIGN_CENTER, 0, 20);
 
-  btn_back = lv_btn_create(scr_alarm);
-  lv_obj_align(btn_back, LV_ALIGN_TOP_LEFT, 4, 4);
-  lv_obj_t *lbl = lv_label_create(btn_back);
-  lv_label_set_text(lbl, "Back");
-  lv_obj_add_event_cb(btn_back, back_event_cb, LV_EVENT_CLICKED, NULL);
+  /* overlay to detect left swipe for hiding */
+  lv_obj_t *overlay = lv_obj_create(scr_alarm);
+  lv_obj_set_size(overlay, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_opa(overlay, LV_OPA_TRANSP, 0);
+  lv_obj_add_event_cb(overlay, alarm_overlay_event, LV_EVENT_ALL, NULL);
 
   btn_add = lv_btn_create(scr_alarm);
   lv_obj_align(btn_add, LV_ALIGN_TOP_RIGHT, -4, 4);
@@ -76,14 +88,16 @@ void ui_alarm_init(void) {
 void ui_alarm_show(void) {
   if (!scr_alarm)
     ui_alarm_init();
+  scr_prev = lv_scr_act();
   lv_scr_load(scr_alarm);
   ui_alarm_refresh();
 }
 
 void ui_alarm_hide(void) {
-  lv_obj_t *prev = lv_scr_act();
-  // naive: load the default screen back
-  lv_scr_load(lv_obj_get_parent(prev));
+  if (scr_prev) {
+    lv_scr_load(scr_prev);
+    scr_prev = NULL;
+  }
 }
 
 void ui_alarm_refresh(void) {
