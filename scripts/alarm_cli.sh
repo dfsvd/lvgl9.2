@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 # scripts/alarm_cli.sh - simple helper to add/list/remove alarms by editing data/alarms.json
 # Usage: alarm_cli.sh add|list|rm <args>
 set -euo pipefail

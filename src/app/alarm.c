@@ -1,6 +1,6 @@
 // src/app/alarm.c
 #include "app/alarm.h"
-#include "third_party/cjson/cJSON.h"
+#include "cJSON.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -252,8 +252,19 @@ void alarm_check_due(void) {
   localtime_r(&now, &tm);
   for (size_t i = 0; i < g_count; ++i) {
     if (should_trigger(&g_alarms[i], &tm)) {
+      // If this is a one-shot (no repeat) alarm, disable and persist
+      // immediately
+      int any = 0;
+      for (int k = 0; k < 7; ++k)
+        any |= g_alarms[i].repeat[k];
+      if (!any && !g_alarms[i].remove_after_trigger) {
+        g_alarms[i].enabled = false;
+        alarm_save_now();
+      }
+
       if (g_trigger_cb)
         g_trigger_cb(&g_alarms[i]);
+
       // try to play the configured sound using scripts/play_alarm.sh
       if (g_alarms[i].sound[0]) {
         char cmd[1024];
@@ -261,18 +272,10 @@ void alarm_check_due(void) {
                  g_alarms[i].sound);
         system(cmd);
       }
+
       if (g_alarms[i].remove_after_trigger) {
         alarm_remove(g_alarms[i].id);
         --i; // shifted
-      } else {
-        // disable one-shot
-        int any = 0;
-        for (int k = 0; k < 7; ++k)
-          any |= g_alarms[i].repeat[k];
-        if (!any) {
-          g_alarms[i].enabled = false;
-          alarm_save_now();
-        }
       }
     }
   }
