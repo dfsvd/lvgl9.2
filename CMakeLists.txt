@@ -15,6 +15,7 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 include_directories(
     ${PROJECT_SOURCE_DIR}/config
     ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/include/app
     ${PROJECT_SOURCE_DIR}/assets
 )
 
@@ -26,6 +27,7 @@ add_library(fonts STATIC ${FONT_SOURCES})
 target_include_directories(fonts PUBLIC 
     ${PROJECT_SOURCE_DIR}/assets
     ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include/app
 )
 
 # 添加 cJSON 库
@@ -39,12 +41,17 @@ add_subdirectory(third_party/lvgl)
 target_include_directories(lvgl PUBLIC 
     ${PROJECT_SOURCE_DIR}/config
     ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include/app
 )
 
 # 主可执行文件
 add_executable(main 
     src/main.c
-    src/app/hello.c
+    src/app/demo_module.c
+    src/app/data_service.c
+    src/app/network.c
+    src/app/ui/ui_time_widget.c
+    src/app/ui/ui_weather_widget.c
 )
 
 target_link_libraries(main 

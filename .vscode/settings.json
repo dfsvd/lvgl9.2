@@ -8,5 +8,7 @@
                 "ARGB",
                 "XRGB",
                 "yqb"
-        ]
+        ],
+        "cmake.configurePreset": "arm-linux-cross-v5",
+        "cmake.buildDirectory": "${workspaceFolder}/build"
 }
