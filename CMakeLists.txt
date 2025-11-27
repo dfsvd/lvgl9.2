@@ -47,11 +47,13 @@ target_include_directories(lvgl PUBLIC
 # 主可执行文件
 add_executable(main 
     src/main.c
+    src/app/alarm.c
     src/app/demo_module.c
     src/app/data_service.c
     src/app/network.c
     src/app/ui/ui_time_widget.c
     src/app/ui/ui_weather_widget.c
+    src/app/ui/ui_alarm.c
 )
 
 target_link_libraries(main 
@@ -66,3 +68,6 @@ target_link_libraries(main
 
 # 自定义目标
 add_custom_target(run COMMAND ${EXECUTABLE_OUTPUT_PATH}/main DEPENDS main)
+
+# Include app subdirectory so example targets (alarm_example) are available
+add_subdirectory(src/app)
