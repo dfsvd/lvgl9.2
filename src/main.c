@@ -1,5 +1,5 @@
 #include "app_config.h"
-#include "third_party/lvgl/demos/lv_demos.h"
+#include "hello.h"
 #include "third_party/lvgl/lvgl.h"
 #include <unistd.h>
 
@@ -20,10 +20,10 @@ int main(void) {
 
   /*Linux display device init*/
   lv_linux_disp_init();
+  lv_touchpad_init();
 
-  /*Create a Demo*/
-  lv_demo_widgets();
-  lv_demo_widgets_start_slideshow();
+  /*Create Hello test app*/
+  hello_app_create();
 
   /*Handle LVGL tasks*/
   while (1) {

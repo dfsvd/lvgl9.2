@@ -15,6 +15,17 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
 include_directories(
     ${PROJECT_SOURCE_DIR}/config
     ${PROJECT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/assets
+)
+
+# 收集字体文件
+file(GLOB FONT_SOURCES "assets/fonts/*.c")
+
+# 添加字体库
+add_library(fonts STATIC ${FONT_SOURCES})
+target_include_directories(fonts PUBLIC 
+    ${PROJECT_SOURCE_DIR}/assets
+    ${PROJECT_SOURCE_DIR}
 )
 
 # 添加 cJSON 库
@@ -31,12 +42,16 @@ target_include_directories(lvgl PUBLIC
 )
 
 # 主可执行文件
-add_executable(main src/main.c)
+add_executable(main 
+    src/main.c
+    src/app/hello.c
+)
 
 target_link_libraries(main 
     PUBLIC 
     lvgl 
     lvgl::demos 
+    fonts
     cjson
     m 
     pthread 
