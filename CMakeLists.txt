@@ -55,6 +55,7 @@ add_executable(main
     src/app/ui/ui_main.c
     src/app/ui/ui_secondary.c
     src/app/ui/ui_music.c
+    src/app/audio_player.c
     src/app/ui/ui_alarm.c
 )
 

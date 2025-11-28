@@ -1,6 +1,7 @@
 // src/app/ui/ui_music.c
 
 #include "app/ui/ui_music.h"
+#include "app/audio_player.h"
 #include "fonts.h"
 #include "lvgl.h"
 #include <stdio.h>
@@ -66,31 +67,38 @@ static void play_timer_cb(lv_timer_t *t) {
 
 static void play_event_cb(lv_event_t *e) {
   (void)e;
-  is_playing = !is_playing;
-  if (is_playing) {
+  // toggle: if not started, play file; else toggle pause
+  const char *path = "/root/data/music/渡口 - 蔡琴.flac";
+  if (!is_playing) {
+    audio_play_file(path);
+    is_playing = true;
     if (lbl_play_sym)
       lv_label_set_text(lbl_play_sym, LV_SYMBOL_PAUSE);
   } else {
+    audio_toggle_pause();
+    is_playing = !is_playing;
     if (lbl_play_sym)
-      lv_label_set_text(lbl_play_sym, LV_SYMBOL_PLAY);
+      lv_label_set_text(lbl_play_sym,
+                        is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
   }
 }
 
 static void prev_event_cb(lv_event_t *e) {
   (void)e;
-  // simple reset
-  elapsed_seconds = 0;
+  // seek backward 10s
+  audio_seek_rel(-10);
 }
 
 static void next_event_cb(lv_event_t *e) {
   (void)e;
-  // simple advance to end
-  elapsed_seconds = total_seconds;
+  // seek forward 10s
+  audio_seek_rel(10);
 }
 
 void ui_music_init(void) {
   if (scr_music)
     return;
+  audio_init(NULL, NULL);
   scr_music = lv_obj_create(NULL);
   /* Fixed layout: overall screen 800x480 */
   lv_obj_set_size(scr_music, 800, 480);
