@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
 
 static void dump_obj(lv_obj_t *o, const char *name) {
   if (!o) {
@@ -86,6 +87,38 @@ static int scan_music_dir(const char *dir) {
   return playlist_count;
 }
 
+static int file_exists(const char *path) {
+  if (!path)
+    return 0;
+  return access(path, F_OK) == 0;
+}
+
+// ensure current playlist_index points to an existing file; if not, try to
+// advance or rescan the directory
+static int ensure_valid_index(void) {
+  if (playlist_count == 0)
+    return 0;
+  // try current index first
+  for (int i = 0; i < playlist_count; ++i) {
+    int idx = (playlist_index + i) % playlist_count;
+    if (file_exists(playlist[idx])) {
+      playlist_index = idx;
+      return 1;
+    }
+  }
+  // nothing exists -> try rescanning once
+  if (scan_music_dir("/root/data/music") > 0) {
+    // try again
+    for (int i = 0; i < playlist_count; ++i) {
+      if (file_exists(playlist[i])) {
+        playlist_index = i;
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
 // Controls
 static lv_obj_t *btn_prev = NULL;
 static lv_obj_t *btn_play = NULL;
@@ -142,6 +175,8 @@ static void play_event_cb(lv_event_t *e) {
   if (playlist_count == 0)
     return;
   if (!is_playing) {
+    if (!ensure_valid_index())
+      return;
     const char *path = playlist[playlist_index];
     audio_play_file(path);
     is_playing = true;
@@ -166,6 +201,8 @@ static void prev_event_cb(lv_event_t *e) {
   if (playlist_count == 0)
     return;
   playlist_index = (playlist_index - 1 + playlist_count) % playlist_count;
+  if (!ensure_valid_index())
+    return;
   audio_play_file(playlist[playlist_index]);
   is_playing = true;
   if (lbl_play_sym)
@@ -177,6 +214,8 @@ static void next_event_cb(lv_event_t *e) {
   if (playlist_count == 0)
     return;
   playlist_index = (playlist_index + 1) % playlist_count;
+  if (!ensure_valid_index())
+    return;
   audio_play_file(playlist[playlist_index]);
   is_playing = true;
   if (lbl_play_sym)
@@ -189,6 +228,8 @@ static void audio_event_handler(int event) {
     if (playlist_count == 0)
       return;
     playlist_index = (playlist_index + 1) % playlist_count;
+    if (!ensure_valid_index())
+      return;
     audio_play_file(playlist[playlist_index]);
   }
 }
