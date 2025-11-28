@@ -26,6 +26,7 @@ static void dump_obj(lv_obj_t *o, const char *name) {
 
 static lv_obj_t *scr_music = NULL;
 static lv_obj_t *scr_prev = NULL;
+static lv_coord_t touch_start_x_music = 0;
 
 static lv_obj_t *lbl_title = NULL;
 static lv_obj_t *lbl_artist = NULL;
@@ -234,6 +235,36 @@ static void audio_event_handler(int event) {
   }
 }
 
+static void music_overlay_event(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_GESTURE) {
+    lv_indev_t *ind = lv_indev_get_act();
+    if (!ind)
+      return;
+    lv_dir_t dir = lv_indev_get_gesture_dir(ind);
+    if (dir == LV_DIR_RIGHT) {
+      ui_music_hide();
+    }
+    return;
+  }
+
+  if (code == LV_EVENT_PRESSED) {
+    lv_indev_t *ind = lv_indev_get_act();
+    lv_point_t p;
+    if (ind)
+      lv_indev_get_point(ind, &p);
+    touch_start_x_music = p.x;
+  } else if (code == LV_EVENT_RELEASED) {
+    lv_indev_t *ind = lv_indev_get_act();
+    lv_point_t p;
+    if (ind)
+      lv_indev_get_point(ind, &p);
+    if (p.x - touch_start_x_music > 180) { /* right swipe threshold */
+      ui_music_hide();
+    }
+  }
+}
+
 void ui_music_init(void) {
   if (scr_music)
     return;
@@ -348,6 +379,9 @@ void ui_music_init(void) {
   dump_obj(btn_prev, "btn_prev");
   dump_obj(btn_play, "btn_play");
   dump_obj(btn_next, "btn_next");
+
+  /* bind swipe detection so children still receive clicks */
+  lv_obj_add_event_cb(scr_music, music_overlay_event, LV_EVENT_ALL, NULL);
 }
 
 void ui_music_set_song(const song_t *s) {
@@ -380,7 +414,8 @@ void ui_music_show(void) {
   if (!scr_music)
     ui_music_init();
   scr_prev = lv_scr_act();
-  lv_scr_load(scr_music);
+  /* animate screen in from right -> left movement */
+  lv_scr_load_anim(scr_music, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300, 0, false);
   /* Force an immediate refresh so coordinates are computed, then dump */
   lv_refr_now(NULL);
   dump_obj(scr_music, "scr_music");
@@ -401,7 +436,8 @@ void ui_music_show(void) {
 
 void ui_music_hide(void) {
   if (scr_prev) {
-    lv_scr_load(scr_prev);
+    /* animate previous screen in from left -> right movement */
+    lv_scr_load_anim(scr_prev, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
     scr_prev = NULL;
   }
 }
