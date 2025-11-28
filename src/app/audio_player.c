@@ -18,6 +18,10 @@ static pthread_t reader_thread;
 static int cur_pos = 0;
 static int cur_len = 0;
 static int playing = 0;
+static audio_event_cb_t event_cb = NULL;
+static char meta_title[256] = "";
+static char meta_artist[256] = "";
+static char meta_album[256] = "";
 
 static void *reader_fn(void *arg) {
   (void)arg;
@@ -28,14 +32,49 @@ static void *reader_fn(void *arg) {
   while (fgets(line, sizeof(line), f)) {
     // echo mplayer output for debugging
     printf("[mplayer] %s", line);
-    // parse simple ANS_* responses
+    // parse simple ANS_* responses or clip info
     if (strncmp(line, "ANS_TIME_POSITION=", 18) == 0) {
       cur_pos = atoi(line + 18);
     } else if (strncmp(line, "ANS_TIME_LENGTH=", 16) == 0) {
       cur_len = atoi(line + 16);
+    } else if (strstr(line, "ALBUM:")) {
+      const char *p = strchr(line, ':');
+      if (p) {
+        p++;
+        while (*p == ' ' || *p == '\t')
+          p++;
+        strncpy(meta_album, p, sizeof(meta_album) - 1);
+        char *nl = strchr(meta_album, '\n');
+        if (nl)
+          *nl = '\0';
+      }
+    } else if (strstr(line, "ARTIST:")) {
+      const char *p = strchr(line, ':');
+      if (p) {
+        p++;
+        while (*p == ' ' || *p == '\t')
+          p++;
+        strncpy(meta_artist, p, sizeof(meta_artist) - 1);
+        char *nl = strchr(meta_artist, '\n');
+        if (nl)
+          *nl = '\0';
+      }
+    } else if (strstr(line, "TITLE:")) {
+      const char *p = strchr(line, ':');
+      if (p) {
+        p++;
+        while (*p == ' ' || *p == '\t')
+          p++;
+        strncpy(meta_title, p, sizeof(meta_title) - 1);
+        char *nl = strchr(meta_title, '\n');
+        if (nl)
+          *nl = '\0';
+      }
     } else if (strstr(line, "EOF code: 0")) {
       // end of file reached
       playing = 0;
+      if (event_cb)
+        event_cb(1);
     }
     // continue reading
   }
@@ -165,3 +204,9 @@ bool audio_quit(void) {
   }
   return true;
 }
+
+void audio_set_event_cb(audio_event_cb_t cb) { event_cb = cb; }
+
+const char *audio_get_title(void) { return meta_title; }
+const char *audio_get_artist(void) { return meta_artist; }
+const char *audio_get_album(void) { return meta_album; }

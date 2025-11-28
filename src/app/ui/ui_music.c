@@ -4,9 +4,11 @@
 #include "app/audio_player.h"
 #include "fonts.h"
 #include "lvgl.h"
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 static void dump_obj(lv_obj_t *o, const char *name) {
   if (!o) {
@@ -24,7 +26,6 @@ static void dump_obj(lv_obj_t *o, const char *name) {
 static lv_obj_t *scr_music = NULL;
 static lv_obj_t *scr_prev = NULL;
 
-// Left column
 static lv_obj_t *lbl_title = NULL;
 static lv_obj_t *lbl_artist = NULL;
 static lv_obj_t *lbl_album = NULL;
@@ -38,6 +39,52 @@ static lv_timer_t *play_timer = NULL;
 static int elapsed_seconds = 0;
 static int total_seconds = 0;
 static bool is_playing = false;
+
+// Playlist
+static char **playlist = NULL;
+static int playlist_count = 0;
+static int playlist_index = 0;
+
+static void free_playlist(void) {
+  if (!playlist)
+    return;
+  for (int i = 0; i < playlist_count; ++i)
+    free(playlist[i]);
+  free(playlist);
+  playlist = NULL;
+  playlist_count = 0;
+  playlist_index = 0;
+}
+
+static int scan_music_dir(const char *dir) {
+  free_playlist();
+  playlist_count = 0;
+  playlist = NULL;
+  if (!dir)
+    return 0;
+  DIR *d = opendir(dir);
+  if (!d)
+    return 0;
+  struct dirent *ent;
+  while ((ent = readdir(d)) != NULL) {
+    if (ent->d_type == DT_REG) {
+      // naive filter for common audio extensions
+      const char *name = ent->d_name;
+      const char *ext = strrchr(name, '.');
+      if (!ext)
+        continue;
+      if (strcasecmp(ext, ".flac") == 0 || strcasecmp(ext, ".mp3") == 0 ||
+          strcasecmp(ext, ".wav") == 0) {
+        playlist = realloc(playlist, sizeof(char *) * (playlist_count + 1));
+        char *full = malloc(strlen(dir) + 1 + strlen(name) + 1);
+        sprintf(full, "%s/%s", dir, name);
+        playlist[playlist_count++] = full;
+      }
+    }
+  }
+  closedir(d);
+  return playlist_count;
+}
 
 // Controls
 static lv_obj_t *btn_prev = NULL;
@@ -65,15 +112,46 @@ static void play_timer_cb(lv_timer_t *t) {
   }
 }
 
+// metadata poll timer to update labels from mplayer clip info
+static lv_timer_t *meta_timer = NULL;
+static void meta_timer_cb(lv_timer_t *t) {
+  (void)t;
+  if (!is_playing)
+    return;
+  const char *titol = audio_get_title();
+  const char *art = audio_get_artist();
+  const char *alb = audio_get_album();
+  char buf[256];
+  if (titol && titol[0]) {
+    snprintf(buf, sizeof(buf), "歌曲名 : %s", titol);
+    lv_label_set_text(lbl_title, buf);
+  }
+  if (art && art[0]) {
+    snprintf(buf, sizeof(buf), "艺术家 : %s", art);
+    lv_label_set_text(lbl_artist, buf);
+  }
+  if (alb && alb[0]) {
+    snprintf(buf, sizeof(buf), "专辑 : %s", alb);
+    lv_label_set_text(lbl_album, buf);
+  }
+}
+
 static void play_event_cb(lv_event_t *e) {
   (void)e;
   // toggle: if not started, play file; else toggle pause
-  const char *path = "/root/data/music/渡口 - 蔡琴.flac";
+  if (playlist_count == 0)
+    return;
   if (!is_playing) {
+    const char *path = playlist[playlist_index];
     audio_play_file(path);
     is_playing = true;
     if (lbl_play_sym)
       lv_label_set_text(lbl_play_sym, LV_SYMBOL_PAUSE);
+    // update UI metadata if available (naive)
+    // set placeholders until metadata arrives
+    lv_label_set_text(lbl_title, "歌曲名 : 占位");
+    lv_label_set_text(lbl_artist, "艺术家 : 占位");
+    lv_label_set_text(lbl_album, "专辑 : 占位");
   } else {
     audio_toggle_pause();
     is_playing = !is_playing;
@@ -85,20 +163,44 @@ static void play_event_cb(lv_event_t *e) {
 
 static void prev_event_cb(lv_event_t *e) {
   (void)e;
-  // seek backward 10s
-  audio_seek_rel(-10);
+  if (playlist_count == 0)
+    return;
+  playlist_index = (playlist_index - 1 + playlist_count) % playlist_count;
+  audio_play_file(playlist[playlist_index]);
+  is_playing = true;
+  if (lbl_play_sym)
+    lv_label_set_text(lbl_play_sym, LV_SYMBOL_PAUSE);
 }
 
 static void next_event_cb(lv_event_t *e) {
   (void)e;
-  // seek forward 10s
-  audio_seek_rel(10);
+  if (playlist_count == 0)
+    return;
+  playlist_index = (playlist_index + 1) % playlist_count;
+  audio_play_file(playlist[playlist_index]);
+  is_playing = true;
+  if (lbl_play_sym)
+    lv_label_set_text(lbl_play_sym, LV_SYMBOL_PAUSE);
+}
+
+static void audio_event_handler(int event) {
+  // event 1 = EOF -> play next
+  if (event == 1) {
+    if (playlist_count == 0)
+      return;
+    playlist_index = (playlist_index + 1) % playlist_count;
+    audio_play_file(playlist[playlist_index]);
+  }
 }
 
 void ui_music_init(void) {
   if (scr_music)
     return;
   audio_init(NULL, NULL);
+  // register event callback for end-of-track
+  audio_set_event_cb(audio_event_handler);
+  // scan music directory for tracks
+  scan_music_dir("/root/data/music");
   scr_music = lv_obj_create(NULL);
   /* Fixed layout: overall screen 800x480 */
   lv_obj_set_size(scr_music, 800, 480);
@@ -183,6 +285,17 @@ void ui_music_init(void) {
   if (!play_timer) {
     play_timer = lv_timer_create(play_timer_cb, 1000, NULL);
     lv_timer_pause(play_timer);
+  }
+
+  if (!meta_timer) {
+    meta_timer = lv_timer_create(meta_timer_cb, 200, NULL);
+  }
+
+  // If we have a playlist, show first track name
+  if (playlist_count > 0) {
+    lv_label_set_text(lbl_title, "歌曲名 : 占位");
+    lv_label_set_text(lbl_artist, "艺术家 : 占位");
+    lv_label_set_text(lbl_album, "专辑 : 占位");
   }
 
   /* Debug dump: print coordinates to help find overflow */
