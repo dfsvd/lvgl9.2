@@ -5,7 +5,7 @@
 
 #include <pthread.h>
 #include <stdbool.h>
-#include <time.h>  // 【新增】用于 time_t
+#include <time.h> // 【新增】用于 time_t
 
 // ... (API 宏定义保持不变) ...
 
@@ -13,12 +13,12 @@
 // 1. 天气数据结构体 (新增时间戳)
 // ------------------------------------
 typedef struct {
-        float temperature;
-        char weather_desc[32];
-        char wind_scale[16];
-        int weather_code;
-        bool is_available;
-        time_t last_updated_time;  // 【新增】上次数据更新的时间戳
+  float temperature;
+  char weather_desc[32];
+  char wind_scale[16];
+  int weather_code;
+  bool is_available;
+  time_t last_updated_time; // 【新增】上次数据更新的时间戳
 } weather_data_t;
 
 /**
@@ -37,6 +37,11 @@ bool data_service_load_cache(void);
  */
 void data_service_fetch_weather(void);
 
+/**
+ * @brief 获取当前缓存的天气数据指针（非 NULL）
+ */
+weather_data_t *data_service_get_weather(void);
+
 // ... (data_service_get_weather 保持不变) ...
 
-#endif  // DATA_SERVICE_H
+#endif // DATA_SERVICE_H

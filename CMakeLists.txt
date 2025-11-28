@@ -52,8 +52,7 @@ add_executable(main
     src/app/demo_module.c
     src/app/data_service.c
     src/app/network.c
-    src/app/ui/ui_time_widget.c
-    src/app/ui/ui_weather_widget.c
+    src/app/ui/ui_main.c
     src/app/ui/ui_alarm.c
 )
 
