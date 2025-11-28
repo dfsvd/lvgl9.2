@@ -9,6 +9,8 @@
 #include "third_party/lvgl/lvgl.h"
 
 #include "app/data_service.h"
+#include "app/ui/ui_music.h"
+#include "app/ui/ui_secondary.h"
 #include "app/ui/ui_time_widget.h"
 #include "app/ui/ui_weather_widget.h"
 #include "app/ui_alarm.h"
@@ -27,9 +29,10 @@ static void swipe_event_cb(lv_event_t *e) {
     lv_indev_t *ind = lv_indev_get_act();
     lv_point_t p;
     lv_indev_get_point(ind, &p);
-    if (p.x - touch_start_x >
-        160) { // right swipe threshold (reduced false positives)
+    if (p.x - touch_start_x > 160) { // right swipe threshold
       ui_alarm_show();
+    } else if (touch_start_x - p.x > 160) { // left swipe -> music
+      ui_music_show();
     }
   }
 }
