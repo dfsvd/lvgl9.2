@@ -1,8 +1,11 @@
 #include "app/audio_player.h"
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/ioctl.h>
+#include <sys/soundcard.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -51,6 +54,21 @@ bool audio_init(const char *mplayer_path, const char *ao_driver) {
     close(inpipe[0]);
     close(inpipe[1]);
     return false;
+  }
+
+  // If using OSS, try to reset the device to avoid "OSS: Reset failed" errors
+  if (!ao_driver || strcmp(ao_driver, "oss") == 0) {
+    int dsp_fd = open("/dev/dsp", O_RDWR | O_NONBLOCK);
+    if (dsp_fd >= 0) {
+      if (ioctl(dsp_fd, SNDCTL_DSP_RESET, 0) == 0) {
+        printf("[Audio] OSS device reset OK\n");
+      } else {
+        perror("[Audio] OSS ioctl SNDCTL_DSP_RESET failed");
+      }
+      close(dsp_fd);
+    } else {
+      perror("[Audio] open /dev/dsp failed");
+    }
   }
 
   pid_t pid = fork();
