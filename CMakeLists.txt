@@ -69,6 +69,7 @@ target_link_libraries(main
 )
 
 
+
 # Add example executable `alarm_example` (moved from src/app/CMakeLists.txt)
 add_executable(alarm_example src/app/alarm_example.c src/app/alarm.c)
 target_include_directories(alarm_example PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/third_party/cjson)

@@ -4,6 +4,7 @@
 #include "app/audio_player.h"
 #include "fonts.h"
 #include "lvgl.h"
+#include "ui_video.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -244,6 +245,8 @@ static void music_overlay_event(lv_event_t *e) {
     lv_dir_t dir = lv_indev_get_gesture_dir(ind);
     if (dir == LV_DIR_RIGHT) {
       ui_music_hide();
+    } else if (dir == LV_DIR_LEFT) {
+      ui_video_show();
     }
     return;
   }
@@ -261,6 +264,11 @@ static void music_overlay_event(lv_event_t *e) {
       lv_indev_get_point(ind, &p);
     if (p.x - touch_start_x_music > 180) { /* right swipe threshold */
       ui_music_hide();
+      return;
+    }
+    if (touch_start_x_music - p.x > 180) { /* left swipe threshold */
+      ui_video_show();
+      return;
     }
   }
 }
