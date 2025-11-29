@@ -7,7 +7,15 @@
                 "disp",
                 "ARGB",
                 "XRGB",
-                "yqb"
+                "yqb",
+                "LXGWWenKaiMono",
+                "flac",
+                "lplay",
+                "titol",
+                "rescanning",
+                "mplayer",
+                "refr",
+                "cjson",
         ],
         "cmake.configurePreset": "arm-linux-cross-v5",
         "cmake.buildDirectory": "${workspaceFolder}/build"

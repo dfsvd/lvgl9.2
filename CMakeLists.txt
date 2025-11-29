@@ -45,18 +45,17 @@ target_include_directories(lvgl PUBLIC
     ${PROJECT_SOURCE_DIR}/include/app
 )
 
-# 主可执行文件
-add_executable(main 
+# 主可执行文件 - 自动收集 src/app 下的所有 .c 文件（排除 alarm_example.c）
+file(GLOB_RECURSE APP_SOURCES
+    LIST_DIRECTORIES false
+    "src/app/*.c"
+)
+
+list(REMOVE_ITEM APP_SOURCES ${CMAKE_SOURCE_DIR}/src/app/alarm_example.c)
+
+add_executable(main
     src/main.c
-    src/app/alarm.c
-    src/app/demo_module.c
-    src/app/data_service.c
-    src/app/network.c
-    src/app/ui/ui_main.c
-    src/app/ui/ui_secondary.c
-    src/app/ui/ui_music.c
-    src/app/audio_player.c
-    src/app/ui/ui_alarm.c
+    ${APP_SOURCES}
 )
 
 target_link_libraries(main 
@@ -69,8 +68,8 @@ target_link_libraries(main
     pthread 
 )
 
-# 自定义目标
-add_custom_target(run COMMAND ${EXECUTABLE_OUTPUT_PATH}/main DEPENDS main)
 
-# Include app subdirectory so example targets (alarm_example) are available
-add_subdirectory(src/app)
+# Add example executable `alarm_example` (moved from src/app/CMakeLists.txt)
+add_executable(alarm_example src/app/alarm_example.c src/app/alarm.c)
+target_include_directories(alarm_example PRIVATE ${PROJECT_SOURCE_DIR}/include ${PROJECT_SOURCE_DIR}/third_party/cjson)
+target_link_libraries(alarm_example PRIVATE cjson lvgl fonts m pthread)
