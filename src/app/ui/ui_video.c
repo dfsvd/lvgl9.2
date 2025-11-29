@@ -1,10 +1,15 @@
 // src/app/ui/ui_video.c
 
 #include "ui_video.h"
+#include "app/audio_player.h"
+#include "app/video_player.h"
 #include "fonts.h"
 #include "lvgl.h"
+#include <dirent.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 static lv_obj_t *scr_video = NULL;
 static lv_obj_t *scr_prev = NULL;
@@ -22,16 +27,20 @@ static lv_obj_t *btn_next = NULL;
 static lv_obj_t *slider = NULL;
 static lv_obj_t *lbl_time_cur = NULL;
 static lv_obj_t *lbl_time_total = NULL;
+static lv_timer_t *video_poll_timer = NULL;
 
 static bool is_playing = false;
 static int cur_seconds = 0;
 static int tot_seconds = 0;
 static lv_coord_t touch_start_x_video = 0;
+static char *current_video_path = NULL;
 
 /* forward declaration for event handler */
 static void video_overlay_event(lv_event_t *e);
 /* ensure prototype is visible for event handler calls */
 void ui_video_hide(void);
+/* forward declaration for poll callback */
+static void video_poll_cb(lv_timer_t *t);
 
 static void format_time(int s, char *buf, size_t len) {
   if (s < 0)
@@ -43,15 +52,68 @@ static void format_time(int s, char *buf, size_t len) {
 
 static void play_event_cb(lv_event_t *e) {
   (void)e;
-  is_playing = !is_playing;
-  if (lbl_play_sym)
-    lv_label_set_text(lbl_play_sym,
-                      is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+  if (!is_playing) {
+    // if no video loaded, try to find one and start playback
+    if (!current_video_path) {
+      // scan directory for a video file
+      DIR *d = opendir("/root/data/videos");
+      if (d) {
+        struct dirent *ent;
+        while ((ent = readdir(d)) != NULL) {
+          if (ent->d_type == DT_REG) {
+            const char *name = ent->d_name;
+            const char *ext = strrchr(name, '.');
+            if (!ext)
+              continue;
+            if (strcasecmp(ext, ".mp4") == 0 || strcasecmp(ext, ".mkv") == 0 ||
+                strcasecmp(ext, ".avi") == 0 || strcasecmp(ext, ".flv") == 0) {
+              size_t len = strlen("/root/data/videos/") + strlen(name) + 1;
+              current_video_path = malloc(len);
+              snprintf(current_video_path, len, "/root/data/videos/%s", name);
+              break;
+            }
+          }
+        }
+        closedir(d);
+      }
+    }
+
+    if (current_video_path) {
+      printf("[UI_VIDEO] starting playback: %s\n", current_video_path);
+      // stop audio backend to free OSS device
+      audio_quit();
+      video_play_file(current_video_path);
+      is_playing = true;
+      if (lbl_play_sym)
+        lv_label_set_text(lbl_play_sym, LV_SYMBOL_PAUSE);
+      if (video_poll_timer)
+        lv_timer_resume(video_poll_timer);
+    }
+  } else {
+    // already playing -> toggle pause
+    video_toggle_pause();
+    is_playing = !is_playing;
+    if (lbl_play_sym)
+      lv_label_set_text(lbl_play_sym,
+                        is_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
+  }
 }
 
 static void full_event_cb(lv_event_t *e) {
   (void)e;
   // Placeholder: toggle fullscreen could be implemented by user
+}
+
+static void prev_event_cb(lv_event_t *e) {
+  (void)e;
+  // seek backwards 10 seconds
+  video_seek_rel(-10);
+}
+
+static void next_event_cb(lv_event_t *e) {
+  (void)e;
+  // seek forward 10 seconds
+  video_seek_rel(10);
 }
 
 void ui_video_init(void) {
@@ -108,7 +170,7 @@ void ui_video_init(void) {
   btn_prev = lv_btn_create(ctrl_bar);
   lv_obj_set_size(btn_prev, btn_w, btn_h);
   lv_obj_set_pos(btn_prev, start_x, 12);
-  lv_obj_add_event_cb(btn_prev, NULL, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(btn_prev, prev_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_prev = lv_label_create(btn_prev);
   lv_label_set_text(lbl_prev, LV_SYMBOL_PREV);
 
@@ -122,7 +184,7 @@ void ui_video_init(void) {
   btn_next = lv_btn_create(ctrl_bar);
   lv_obj_set_size(btn_next, btn_w, btn_h);
   lv_obj_set_pos(btn_next, start_x + (btn_w + gap) * 2, 12);
-  lv_obj_add_event_cb(btn_next, NULL, LV_EVENT_CLICKED, NULL);
+  lv_obj_add_event_cb(btn_next, next_event_cb, LV_EVENT_CLICKED, NULL);
   lv_obj_t *lbl_next = lv_label_create(btn_next);
   lv_label_set_text(lbl_next, LV_SYMBOL_NEXT);
 
@@ -132,8 +194,34 @@ void ui_video_init(void) {
   lv_obj_add_event_cb(btn_full, full_event_cb, LV_EVENT_CLICKED, NULL);
   lv_label_set_text(lv_label_create(btn_full), "⤢");
 
+  // initialize video backend (mplayer) with fbdev vo
+  video_init(NULL, "fbdev");
+
   /* bind swipe detection so children still receive clicks */
   lv_obj_add_event_cb(scr_video, video_overlay_event, LV_EVENT_ALL, NULL);
+
+  if (!video_poll_timer) {
+    video_poll_timer = lv_timer_create(video_poll_cb, 500, NULL);
+    lv_timer_pause(video_poll_timer);
+  }
+}
+
+void ui_video_play_file(const char *path) {
+  if (!path)
+    return;
+  video_play_file(path);
+  is_playing = true;
+  if (lbl_play_sym)
+    lv_label_set_text(lbl_play_sym, LV_SYMBOL_PAUSE);
+  if (video_poll_timer)
+    lv_timer_resume(video_poll_timer);
+}
+
+static void video_poll_cb(lv_timer_t *t) {
+  (void)t;
+  int pos = video_get_pos();
+  int len = video_get_len();
+  ui_video_set_time(pos, len);
 }
 
 static void video_overlay_event(lv_event_t *e) {
