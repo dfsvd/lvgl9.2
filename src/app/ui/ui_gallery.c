@@ -3,11 +3,21 @@
 #include "app/ui/ui_gallery.h"
 #include "fonts.h"
 #include "lvgl.h"
-#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
+
+/* Declare the compiled image resources */
+LV_IMG_DECLARE(image_1);
+LV_IMG_DECLARE(image_2);
+LV_IMG_DECLARE(image_3);
+LV_IMG_DECLARE(image_4);
+LV_IMG_DECLARE(image_5);
+LV_IMG_DECLARE(image_6);
+LV_IMG_DECLARE(image_7);
+LV_IMG_DECLARE(image_8);
+LV_IMG_DECLARE(image_9);
+LV_IMG_DECLARE(image_10);
 
 /* Gallery screen state */
 static lv_obj_t *scr_gallery = NULL;
@@ -19,16 +29,16 @@ static lv_obj_t *img_container = NULL;
 static lv_obj_t *lbl_title = NULL;
 static lv_obj_t *lbl_info = NULL;
 
-/* Image gallery state */
-static char **image_paths = NULL;
-static int image_count = 0;
+/* Image gallery state - using compiled image resources */
+static const lv_image_dsc_t *image_list[] = {
+    &image_1, &image_2, &image_3, &image_4, &image_5,
+    &image_6, &image_7, &image_8, &image_9, &image_10};
+static const int image_count = sizeof(image_list) / sizeof(image_list[0]);
 static int current_index = 0;
 
 /* Forward declarations */
 static void gallery_event_cb(lv_event_t *e);
-static void scan_images(const char *dir);
 static void display_current_image(void);
-static void free_image_list(void);
 static void btn_prev_cb(lv_event_t *e);
 static void btn_next_cb(lv_event_t *e);
 
@@ -95,44 +105,6 @@ static void btn_next_cb(lv_event_t *e) {
 }
 
 /**
- * @brief Scan directory for image files
- */
-static void scan_images(const char *dir) {
-  free_image_list();
-
-  if (!dir)
-    return;
-
-  DIR *d = opendir(dir);
-  if (!d) {
-    printf("[Gallery] Failed to open directory: %s\n", dir);
-    return;
-  }
-
-  struct dirent *ent;
-  while ((ent = readdir(d)) != NULL) {
-    if (ent->d_type == DT_REG) {
-      const char *name = ent->d_name;
-      const char *ext = strrchr(name, '.');
-      if (!ext)
-        continue;
-
-      /* Filter for common image extensions */
-      if (strcasecmp(ext, ".jpg") == 0 || strcasecmp(ext, ".jpeg") == 0 ||
-          strcasecmp(ext, ".png") == 0 || strcasecmp(ext, ".bmp") == 0) {
-        image_paths = realloc(image_paths, sizeof(char *) * (image_count + 1));
-        char *full = malloc(strlen(dir) + 1 + strlen(name) + 1);
-        sprintf(full, "%s/%s", dir, name);
-        image_paths[image_count++] = full;
-      }
-    }
-  }
-  closedir(d);
-
-  printf("[Gallery] Found %d images in %s\n", image_count, dir);
-}
-
-/**
  * @brief Display the current image in the gallery
  */
 static void display_current_image(void) {
@@ -142,10 +114,10 @@ static void display_current_image(void) {
   /* Clear previous content */
   lv_obj_clean(img_container);
 
-  if (image_count == 0) {
+  if (image_count == 0 || current_index < 0 || current_index >= image_count) {
     /* Show placeholder text */
     lv_obj_t *lbl_empty = lv_label_create(img_container);
-    lv_label_set_text(lbl_empty, "无可用图片\n请将图片放入指定目录");
+    lv_label_set_text(lbl_empty, "无可用图片");
     lv_obj_set_style_text_font(lbl_empty, &PingFangSC_Regular_24, 0);
     lv_obj_set_style_text_color(lbl_empty, lv_color_hex(0x8E8E93), 0);
     lv_obj_set_style_text_align(lbl_empty, LV_TEXT_ALIGN_CENTER, 0);
@@ -158,26 +130,15 @@ static void display_current_image(void) {
     return;
   }
 
-  /* Create image object */
+  /* Create image object and load from compiled resource */
   lv_obj_t *img = lv_img_create(img_container);
-  /* TODO: Load actual image file */
-  /* lv_img_set_src(img, image_paths[current_index]); */
-
-  /* For now, show a placeholder */
-  lv_obj_set_size(img, 400, 300);
-  lv_obj_set_style_bg_color(img, lv_color_hex(0x3C3C3E), 0);
-  lv_obj_set_style_bg_opa(img, LV_OPA_COVER, 0);
+  lv_img_set_src(img, image_list[current_index]);
   lv_obj_center(img);
 
   /* Update title and info */
   if (lbl_title) {
-    char title_buf[128];
-    const char *filename = strrchr(image_paths[current_index], '/');
-    if (filename)
-      filename++;
-    else
-      filename = image_paths[current_index];
-    snprintf(title_buf, sizeof(title_buf), "%.80s", filename);
+    char title_buf[64];
+    snprintf(title_buf, sizeof(title_buf), "图片 %d", current_index + 1);
     lv_label_set_text(lbl_title, title_buf);
   }
 
@@ -187,20 +148,8 @@ static void display_current_image(void) {
              image_count);
     lv_label_set_text(lbl_info, info_buf);
   }
-}
 
-/**
- * @brief Free image list memory
- */
-static void free_image_list(void) {
-  if (!image_paths)
-    return;
-  for (int i = 0; i < image_count; ++i)
-    free(image_paths[i]);
-  free(image_paths);
-  image_paths = NULL;
-  image_count = 0;
-  current_index = 0;
+  printf("[Gallery] Displaying image %d/%d\n", current_index + 1, image_count);
 }
 
 /**
@@ -290,18 +239,14 @@ void ui_gallery_show(void) {
   scr_prev = lv_scr_act();
   lv_scr_load(scr_gallery);
 
-  /* Scan for images (you can change the path) */
-  /* TODO: Make this path configurable */
-  scan_images("/root/gallery");
+  /* Reset to first image */
   current_index = 0;
   display_current_image();
 
-  printf("[Gallery] Screen shown\n");
-}
-
-/**
- * @brief Hide gallery and return to previous screen
- */
+  printf("[Gallery] Screen shown with %d images\n", image_count);
+} /**
+   * @brief Hide gallery and return to previous screen
+   */
 void ui_gallery_hide(void) {
   if (scr_prev) {
     lv_scr_load(scr_prev);
@@ -314,7 +259,6 @@ void ui_gallery_hide(void) {
  * @brief Refresh gallery content
  */
 void ui_gallery_refresh(void) {
-  scan_images("/root/gallery");
   current_index = 0;
   display_current_image();
 }
