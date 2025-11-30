@@ -3,12 +3,14 @@
 #include "demo_module.h" // 假设 run_demo_module 在此声明
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "app_config.h"
 #include "third_party/lvgl/lvgl.h"
 
 #include "app/data_service.h"
+#include "app/ui/ui_gallery.h"
 #include "app/ui/ui_music.h"
 #include "app/ui/ui_secondary.h"
 #include "app/ui/ui_time_widget.h"
@@ -16,6 +18,7 @@
 #include "app/ui_alarm.h"
 
 static lv_coord_t touch_start_x = 0;
+static lv_coord_t touch_start_y = 0;
 
 static void swipe_event_cb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
@@ -25,14 +28,27 @@ static void swipe_event_cb(lv_event_t *e) {
     lv_point_t p;
     lv_indev_get_point(ind, &p);
     touch_start_x = p.x;
+    touch_start_y = p.y;
   } else if (code == LV_EVENT_RELEASED) {
     lv_indev_t *ind = lv_indev_get_act();
     lv_point_t p;
     lv_indev_get_point(ind, &p);
-    if (p.x - touch_start_x > 160) { // right swipe threshold
-      ui_alarm_show();
-    } else if (touch_start_x - p.x > 160) { // left swipe -> music
-      ui_music_show();
+    int dx = p.x - touch_start_x;
+    int dy = p.y - touch_start_y;
+
+    /* Determine swipe direction based on larger displacement */
+    if (abs(dx) > abs(dy)) {
+      /* Horizontal swipe */
+      if (dx > 160) { // right swipe threshold
+        ui_alarm_show();
+      } else if (dx < -160) { // left swipe -> music
+        ui_music_show();
+      }
+    } else {
+      /* Vertical swipe */
+      if (dy < -80) { // up swipe -> gallery
+        ui_gallery_show();
+      }
     }
   }
 }
