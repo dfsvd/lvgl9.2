@@ -22,7 +22,7 @@ static void secondary_overlay_event(lv_event_t *e) {
       lv_indev_get_point(ind, &p);
     if (p.x - touch_start_x > 80) { // right swipe to go back
       ui_secondary_hide();
-    }
+    } 
   }
 }
 
