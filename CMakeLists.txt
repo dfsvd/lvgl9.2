@@ -31,6 +31,18 @@ target_include_directories(fonts PUBLIC
     ${PROJECT_SOURCE_DIR}/third_party/lvgl
 )
 
+# 收集图片文件
+file(GLOB IMAGE_SOURCES "assets/image/*.c")
+
+# 添加图片库
+add_library(images STATIC ${IMAGE_SOURCES})
+target_include_directories(images PUBLIC 
+    ${PROJECT_SOURCE_DIR}/assets
+    ${PROJECT_SOURCE_DIR}
+    ${PROJECT_SOURCE_DIR}/include/app
+    ${PROJECT_SOURCE_DIR}/third_party
+)
+
 # 添加 cJSON 库
 add_library(cjson STATIC 
     third_party/cjson/cJSON.c
@@ -63,6 +75,7 @@ target_link_libraries(main
     lvgl 
     lvgl::demos 
     fonts
+    images 
     cjson
     m 
     pthread 

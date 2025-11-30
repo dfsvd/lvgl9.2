@@ -24,6 +24,7 @@ int main(void) {
 
   /*Create demo module*/
   run_demo_module();
+  
 
   /*Handle LVGL tasks*/
   while (1) {
