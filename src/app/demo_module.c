@@ -16,9 +16,70 @@
 #include "app/ui/ui_time_widget.h"
 #include "app/ui/ui_weather_widget.h"
 #include "app/ui_alarm.h"
+#include "fonts.h"
 
 static lv_coord_t touch_start_x = 0;
 static lv_coord_t touch_start_y = 0;
+
+/* Wallpaper state */
+static lv_obj_t *wallpaper_img = NULL;
+/* Declare the compiled image resources for wallpaper */
+LV_IMG_DECLARE(image_1);
+LV_IMG_DECLARE(image_2);
+LV_IMG_DECLARE(image_3);
+LV_IMG_DECLARE(image_4);
+LV_IMG_DECLARE(image_5);
+LV_IMG_DECLARE(image_6);
+LV_IMG_DECLARE(image_7);
+LV_IMG_DECLARE(image_8);
+LV_IMG_DECLARE(image_9);
+LV_IMG_DECLARE(image_10);
+static const lv_image_dsc_t *wallpaper_images[] = {
+    &image_1, &image_2, &image_3, &image_4, &image_5,
+    &image_6, &image_7, &image_8, &image_9, &image_10};
+
+static void load_wallpaper_initial(lv_obj_t *scr) {
+  /* Create wallpaper image as background */
+  wallpaper_img = lv_img_create(scr);
+  lv_obj_set_size(wallpaper_img, lv_obj_get_width(scr), lv_obj_get_height(scr));
+  lv_obj_align(wallpaper_img, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_opa(wallpaper_img, LV_OPA_COVER, 0);
+  lv_obj_set_style_bg_opa(wallpaper_img, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(wallpaper_img, 0, 0);
+  /* Put wallpaper at the bottom */
+  lv_obj_move_to_index(wallpaper_img, 0);
+
+  /* Try load persisted index */
+  int idx = -1;
+  FILE *f = fopen("/root/data/gallery_wallpaper.txt", "r");
+  if (f) {
+    if (fscanf(f, "%d", &idx) != 1) {
+      idx = -1;
+    }
+    fclose(f);
+  }
+  if (idx < 0 ||
+      idx >= (int)(sizeof(wallpaper_images) / sizeof(wallpaper_images[0]))) {
+    idx = 0; /* default */
+  }
+  lv_img_set_src(wallpaper_img, wallpaper_images[idx]);
+}
+
+void demo_set_wallpaper_by_index(int idx) {
+  if (!wallpaper_img)
+    return;
+  int count = (int)(sizeof(wallpaper_images) / sizeof(wallpaper_images[0]));
+  if (idx < 0 || idx >= count)
+    idx = 0;
+  lv_img_set_src(wallpaper_img, wallpaper_images[idx]);
+  /* Persist to file, ensure directory exists */
+  system("mkdir -p /root/data");
+  FILE *f = fopen("/root/data/gallery_wallpaper.txt", "w");
+  if (f) {
+    fprintf(f, "%d\n", idx);
+    fclose(f);
+  }
+}
 
 static void swipe_event_cb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
@@ -80,6 +141,9 @@ void run_demo_module(void) {
 
   // 3. 设置初始背景
   set_initial_background(scr);
+
+  // 3.1 加载壁纸（如有持久化）并置于最底层
+  load_wallpaper_initial(scr);
 
   // 4. 【核心】启动数据服务 (阻塞主线程进行首次请求)
   data_service_init();

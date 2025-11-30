@@ -32,6 +32,7 @@ static lv_obj_t *lbl_info = NULL;
 static lv_obj_t *btn_play_pause = NULL;
 static lv_obj_t *lbl_play_pause = NULL;
 static lv_obj_t *hdr = NULL;
+static lv_obj_t *btn_menu = NULL;
 static lv_obj_t *ctrl_bar = NULL;
 
 /* Fullscreen mode state */
@@ -69,6 +70,8 @@ static void enter_fullscreen(void);
 static void exit_fullscreen(void);
 static void fullscreen_event_cb(lv_event_t *e);
 static void display_fullscreen_image(void);
+static void menu_btn_cb(lv_event_t *e);
+static void wallpaper_confirm_cb(lv_event_t *e);
 
 /**
  * @brief Main event handler for gallery screen (handles down-swipe to exit)
@@ -390,6 +393,19 @@ void ui_gallery_init(void) {
   lv_obj_set_style_text_color(lbl_title, lv_color_hex(0xFFFFFF), 0);
   lv_obj_center(lbl_title);
 
+  /* Menu (three dots) button on top-right */
+  btn_menu = lv_btn_create(hdr);
+  lv_obj_set_size(btn_menu, 48, 48);
+  lv_obj_align(btn_menu, LV_ALIGN_RIGHT_MID, -8, 0);
+  lv_obj_set_style_bg_opa(btn_menu, LV_OPA_TRANSP, 0);
+  lv_obj_set_style_border_width(btn_menu, 0, 0);
+  lv_obj_t *lbl_menu = lv_label_create(btn_menu);
+  lv_label_set_text(lbl_menu, "···");
+  lv_obj_set_style_text_font(lbl_menu, &LXGWWenKaiMono_Light_18, 0);
+  lv_obj_set_style_text_color(lbl_menu, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_center(lbl_menu);
+  lv_obj_add_event_cb(btn_menu, menu_btn_cb, LV_EVENT_CLICKED, NULL);
+
   /* Main image display area */
   img_container = lv_obj_create(scr_gallery);
   lv_obj_set_size(img_container, LV_PCT(100), LV_PCT(70));
@@ -501,6 +517,64 @@ void ui_gallery_refresh(void) {
 static void img_click_cb(lv_event_t *e) {
   (void)e;
   enter_fullscreen();
+}
+
+/* Menu button click: show confirm popup to set wallpaper */
+static void menu_btn_cb(lv_event_t *e) {
+  (void)e;
+  if (is_fullscreen)
+    return; /* Only in small-screen mode */
+
+  lv_obj_t *modal = lv_obj_create(scr_gallery);
+  lv_obj_set_size(modal, 360, 200);
+  lv_obj_center(modal);
+  lv_obj_set_style_bg_color(modal, lv_color_hex(0x2C2C2E), 0);
+  lv_obj_set_style_bg_opa(modal, LV_OPA_COVER, 0);
+  lv_obj_set_style_radius(modal, 12, 0);
+  lv_obj_set_style_border_width(modal, 0, 0);
+
+  lv_obj_t *title = lv_label_create(modal);
+  lv_label_set_text(title, "设为壁纸");
+  lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_text_font(title, &PingFangSC_Regular_24, 0);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+
+  lv_obj_t *text = lv_label_create(modal);
+  lv_label_set_text(text, "是否将当前图片设为主界面壁纸？");
+  lv_obj_set_style_text_color(text, lv_color_hex(0xDDDDDD), 0);
+  lv_obj_set_style_text_font(text, &PingFangSC_Regular_18, 0);
+  lv_obj_align(text, LV_ALIGN_CENTER, 0, -16);
+
+  lv_obj_t *btn_confirm = lv_btn_create(modal);
+  lv_obj_set_size(btn_confirm, 120, 40);
+  lv_obj_align(btn_confirm, LV_ALIGN_BOTTOM_LEFT, 24, -16);
+  lv_obj_t *lbl_c = lv_label_create(btn_confirm);
+  lv_label_set_text(lbl_c, "确认");
+  lv_obj_center(lbl_c);
+  lv_obj_add_event_cb(btn_confirm, wallpaper_confirm_cb, LV_EVENT_CLICKED,
+                      modal);
+
+  lv_obj_t *btn_cancel = lv_btn_create(modal);
+  lv_obj_set_size(btn_cancel, 120, 40);
+  lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_RIGHT, -24, -16);
+  lv_obj_t *lbl_x = lv_label_create(btn_cancel);
+  lv_label_set_text(lbl_x, "取消");
+  lv_obj_center(lbl_x);
+  lv_obj_add_event_cb(btn_cancel, wallpaper_confirm_cb, LV_EVENT_CLICKED,
+                      modal);
+}
+
+/* Handle confirm/cancel from message box */
+static void wallpaper_confirm_cb(lv_event_t *e) {
+  lv_obj_t *btn = lv_event_get_current_target(e);
+  lv_obj_t *modal = lv_event_get_user_data(e);
+  const char *txt = lv_label_get_text(lv_obj_get_child(btn, 0));
+  if (txt && strcmp(txt, "确认") == 0) {
+    extern void demo_set_wallpaper_by_index(int idx);
+    demo_set_wallpaper_by_index(current_index);
+  }
+  if (modal)
+    lv_obj_del(modal);
 }
 
 /**
