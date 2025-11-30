@@ -23,11 +23,19 @@ LV_IMG_DECLARE(image_10);
 static lv_obj_t *scr_gallery = NULL;
 static lv_obj_t *scr_prev = NULL;
 static lv_coord_t touch_start_y = 0;
+static lv_coord_t touch_start_x = 0;
 
 /* Gallery content containers */
 static lv_obj_t *img_container = NULL;
 static lv_obj_t *lbl_title = NULL;
 static lv_obj_t *lbl_info = NULL;
+static lv_obj_t *btn_play_pause = NULL;
+static lv_obj_t *lbl_play_pause = NULL;
+
+/* Slideshow state */
+static lv_timer_t *slideshow_timer = NULL;
+static bool is_playing = false;
+static const uint32_t SLIDESHOW_INTERVAL = 3000; /* 3 seconds per image */
 
 /* Image gallery state - using compiled image resources */
 static const lv_image_dsc_t *image_list[] = {
@@ -39,8 +47,17 @@ static int current_index = 0;
 /* Forward declarations */
 static void gallery_event_cb(lv_event_t *e);
 static void display_current_image(void);
+static void animation_update_cb(lv_timer_t *t);
+static void display_image_with_animation(int new_index, lv_anim_path_cb_t path);
 static void btn_prev_cb(lv_event_t *e);
 static void btn_next_cb(lv_event_t *e);
+static void btn_play_pause_cb(lv_event_t *e);
+static void slideshow_timer_cb(lv_timer_t *timer);
+static void start_slideshow(void);
+static void stop_slideshow(void);
+static void save_gallery_state(void);
+static void load_gallery_state(void);
+static void img_swipe_event_cb(lv_event_t *e);
 
 /**
  * @brief Main event handler for gallery screen (handles down-swipe to exit)
@@ -66,14 +83,32 @@ static void gallery_event_cb(lv_event_t *e) {
     if (ind)
       lv_indev_get_point(ind, &p);
     touch_start_y = p.y;
+    touch_start_x = p.x;
   } else if (code == LV_EVENT_RELEASED) {
     lv_indev_t *ind = lv_indev_get_act();
     lv_point_t p;
     if (ind)
       lv_indev_get_point(ind, &p);
-    /* Down swipe: exit */
-    if (p.y - touch_start_y > 80) {
-      ui_gallery_hide();
+
+    int dx = p.x - touch_start_x;
+    int dy = p.y - touch_start_y;
+
+    /* Determine swipe direction */
+    if (abs(dy) > abs(dx)) {
+      /* Vertical swipe */
+      if (dy > 80) {
+        /* Down swipe: exit */
+        ui_gallery_hide();
+      }
+    } else {
+      /* Horizontal swipe */
+      if (dx < -100) {
+        /* Left swipe: next image */
+        btn_next_cb(NULL);
+      } else if (dx > 100) {
+        /* Right swipe: previous image */
+        btn_prev_cb(NULL);
+      }
     }
   }
 }
@@ -85,10 +120,11 @@ static void btn_prev_cb(lv_event_t *e) {
   (void)e;
   if (image_count == 0)
     return;
-  current_index--;
-  if (current_index < 0)
-    current_index = image_count - 1;
-  display_current_image();
+  int new_index = current_index - 1;
+  if (new_index < 0)
+    new_index = image_count - 1;
+  display_image_with_animation(new_index, lv_anim_path_ease_in_out);
+  save_gallery_state();
 }
 
 /**
@@ -98,10 +134,23 @@ static void btn_next_cb(lv_event_t *e) {
   (void)e;
   if (image_count == 0)
     return;
-  current_index++;
-  if (current_index >= image_count)
-    current_index = 0;
-  display_current_image();
+  int new_index = current_index + 1;
+  if (new_index >= image_count)
+    new_index = 0;
+  display_image_with_animation(new_index, lv_anim_path_ease_in_out);
+  save_gallery_state();
+}
+
+/**
+ * @brief Play/Pause button callback
+ */
+static void btn_play_pause_cb(lv_event_t *e) {
+  (void)e;
+  if (is_playing) {
+    stop_slideshow();
+  } else {
+    start_slideshow();
+  }
 }
 
 /**
@@ -150,6 +199,132 @@ static void display_current_image(void) {
   }
 
   printf("[Gallery] Displaying image %d/%d\n", current_index + 1, image_count);
+}
+
+/**
+ * @brief Display image with fade animation
+ */
+/* Helper function for animation update */
+static void animation_update_cb(lv_timer_t *t) {
+  display_current_image();
+
+  /* Fade in animation */
+  lv_anim_t anim_in;
+  lv_anim_init(&anim_in);
+  lv_anim_set_var(&anim_in, img_container);
+  lv_anim_set_values(&anim_in, LV_OPA_TRANSP, LV_OPA_COVER);
+  lv_anim_set_time(&anim_in, 200);
+  lv_anim_set_path_cb(&anim_in, lv_anim_path_ease_in_out);
+  lv_anim_set_exec_cb(&anim_in, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+  lv_anim_start(&anim_in);
+
+  lv_timer_del(t);
+}
+
+static void display_image_with_animation(int new_index,
+                                         lv_anim_path_cb_t path) {
+  if (new_index < 0 || new_index >= image_count)
+    return;
+
+  current_index = new_index;
+
+  /* Fade out animation */
+  lv_anim_t anim_out;
+  lv_anim_init(&anim_out);
+  lv_anim_set_var(&anim_out, img_container);
+  lv_anim_set_values(&anim_out, LV_OPA_COVER, LV_OPA_TRANSP);
+  lv_anim_set_time(&anim_out, 200);
+  lv_anim_set_path_cb(&anim_out, path);
+  lv_anim_set_exec_cb(&anim_out, (lv_anim_exec_xcb_t)lv_obj_set_style_opa);
+  lv_anim_start(&anim_out);
+
+  /* Update content after fade out */
+  lv_timer_t *update_timer = lv_timer_create(animation_update_cb, 200, NULL);
+  lv_timer_set_repeat_count(update_timer, 1);
+}
+
+/**
+ * @brief Slideshow timer callback
+ */
+static void slideshow_timer_cb(lv_timer_t *timer) {
+  (void)timer;
+  if (!is_playing)
+    return;
+  btn_next_cb(NULL);
+}
+
+/**
+ * @brief Start slideshow
+ */
+static void start_slideshow(void) {
+  if (is_playing)
+    return;
+
+  is_playing = true;
+  if (lbl_play_pause) {
+    lv_label_set_text(lbl_play_pause, "暂停");
+  }
+
+  if (!slideshow_timer) {
+    slideshow_timer =
+        lv_timer_create(slideshow_timer_cb, SLIDESHOW_INTERVAL, NULL);
+  } else {
+    lv_timer_resume(slideshow_timer);
+  }
+
+  printf("[Gallery] Slideshow started\n");
+}
+
+/**
+ * @brief Stop slideshow
+ */
+static void stop_slideshow(void) {
+  if (!is_playing)
+    return;
+
+  is_playing = false;
+  if (lbl_play_pause) {
+    lv_label_set_text(lbl_play_pause, "播放");
+  }
+
+  if (slideshow_timer) {
+    lv_timer_pause(slideshow_timer);
+  }
+
+  printf("[Gallery] Slideshow stopped\n");
+}
+
+/**
+ * @brief Save gallery state to file
+ */
+static void save_gallery_state(void) {
+  FILE *f = fopen("/tmp/gallery_state.txt", "w");
+  if (f) {
+    fprintf(f, "%d\n%d\n", current_index, is_playing ? 1 : 0);
+    fclose(f);
+  }
+}
+
+/**
+ * @brief Load gallery state from file
+ */
+static void load_gallery_state(void) {
+  FILE *f = fopen("/tmp/gallery_state.txt", "r");
+  if (f) {
+    int saved_index = 0;
+    int saved_playing = 0;
+    if (fscanf(f, "%d\n%d\n", &saved_index, &saved_playing) == 2) {
+      if (saved_index >= 0 && saved_index < image_count) {
+        current_index = saved_index;
+      }
+      if (saved_playing && !is_playing) {
+        start_slideshow();
+      }
+    }
+    fclose(f);
+    printf("[Gallery] State loaded: index=%d, playing=%d\n", current_index,
+           is_playing);
+  }
 }
 
 /**
@@ -207,20 +382,34 @@ void ui_gallery_init(void) {
 
   /* Previous button */
   lv_obj_t *btn_prev = lv_btn_create(ctrl_bar);
-  lv_obj_set_size(btn_prev, 100, 40);
-  lv_obj_align(btn_prev, LV_ALIGN_BOTTOM_LEFT, 40, -12);
+  lv_obj_set_size(btn_prev, 80, 40);
+  lv_obj_align(btn_prev, LV_ALIGN_BOTTOM_LEFT, 20, -12);
   lv_obj_t *lbl_prev = lv_label_create(btn_prev);
   lv_label_set_text(lbl_prev, "上一张");
-  lv_obj_set_style_text_font(lbl_prev, &PingFangSC_Regular_18, 0);
+  lv_obj_set_style_text_font(lbl_prev, &LXGWWenKaiMono_Light_14, 0);
+  lv_obj_center(lbl_prev);
   lv_obj_add_event_cb(btn_prev, btn_prev_cb, LV_EVENT_CLICKED, NULL);
+
+  /* Play/Pause button */
+  btn_play_pause = lv_btn_create(ctrl_bar);
+  lv_obj_set_size(btn_play_pause, 80, 40);
+  lv_obj_align(btn_play_pause, LV_ALIGN_BOTTOM_MID, 0, -12);
+  lv_obj_set_style_bg_color(btn_play_pause, lv_color_hex(0x007AFF), 0);
+  lbl_play_pause = lv_label_create(btn_play_pause);
+  lv_label_set_text(lbl_play_pause, "播放");
+  lv_obj_set_style_text_font(lbl_play_pause, &LXGWWenKaiMono_Light_14, 0);
+  lv_obj_center(lbl_play_pause);
+  lv_obj_add_event_cb(btn_play_pause, btn_play_pause_cb, LV_EVENT_CLICKED,
+                      NULL);
 
   /* Next button */
   lv_obj_t *btn_next = lv_btn_create(ctrl_bar);
-  lv_obj_set_size(btn_next, 100, 40);
-  lv_obj_align(btn_next, LV_ALIGN_BOTTOM_RIGHT, -40, -12);
+  lv_obj_set_size(btn_next, 80, 40);
+  lv_obj_align(btn_next, LV_ALIGN_BOTTOM_RIGHT, -20, -12);
   lv_obj_t *lbl_next = lv_label_create(btn_next);
   lv_label_set_text(lbl_next, "下一张");
-  lv_obj_set_style_text_font(lbl_next, &PingFangSC_Regular_18, 0);
+  lv_obj_set_style_text_font(lbl_next, &LXGWWenKaiMono_Light_14, 0);
+  lv_obj_center(lbl_next);
   lv_obj_add_event_cb(btn_next, btn_next_cb, LV_EVENT_CLICKED, NULL);
 
   /* Bind swipe detection to screen */
@@ -239,8 +428,8 @@ void ui_gallery_show(void) {
   scr_prev = lv_scr_act();
   lv_scr_load(scr_gallery);
 
-  /* Reset to first image */
-  current_index = 0;
+  /* Load saved state or start from first image */
+  load_gallery_state();
   display_current_image();
 
   printf("[Gallery] Screen shown with %d images\n", image_count);
@@ -248,6 +437,14 @@ void ui_gallery_show(void) {
    * @brief Hide gallery and return to previous screen
    */
 void ui_gallery_hide(void) {
+  /* Stop slideshow if playing */
+  if (is_playing) {
+    stop_slideshow();
+  }
+
+  /* Save current state */
+  save_gallery_state();
+
   if (scr_prev) {
     lv_scr_load(scr_prev);
     scr_prev = NULL;
