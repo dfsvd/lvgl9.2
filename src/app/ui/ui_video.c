@@ -1,6 +1,6 @@
 // src/app/ui/ui_video.c
 
-#include "ui_video.h"
+#include "app/ui_video.h"
 #include "app/audio_player.h"
 #include "app/video_player.h"
 #include "fonts.h"

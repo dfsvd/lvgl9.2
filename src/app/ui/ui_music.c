@@ -2,9 +2,9 @@
 
 #include "app/ui/ui_music.h"
 #include "app/audio_player.h"
+#include "app/ui_video.h"
 #include "fonts.h"
 #include "lvgl.h"
-#include "ui_video.h"
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
