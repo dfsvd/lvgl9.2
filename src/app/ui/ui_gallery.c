@@ -31,6 +31,12 @@ static lv_obj_t *lbl_title = NULL;
 static lv_obj_t *lbl_info = NULL;
 static lv_obj_t *btn_play_pause = NULL;
 static lv_obj_t *lbl_play_pause = NULL;
+static lv_obj_t *hdr = NULL;
+static lv_obj_t *ctrl_bar = NULL;
+
+/* Fullscreen mode state */
+static lv_obj_t *fullscreen_container = NULL;
+static bool is_fullscreen = false;
 
 /* Slideshow state */
 static lv_timer_t *slideshow_timer = NULL;
@@ -58,12 +64,21 @@ static void stop_slideshow(void);
 static void save_gallery_state(void);
 static void load_gallery_state(void);
 static void img_swipe_event_cb(lv_event_t *e);
+static void img_click_cb(lv_event_t *e);
+static void enter_fullscreen(void);
+static void exit_fullscreen(void);
+static void fullscreen_event_cb(lv_event_t *e);
+static void display_fullscreen_image(void);
 
 /**
  * @brief Main event handler for gallery screen (handles down-swipe to exit)
  */
 static void gallery_event_cb(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
+
+  /* Skip gesture handling in fullscreen mode */
+  if (is_fullscreen)
+    return;
 
   if (code == LV_EVENT_GESTURE) {
     lv_indev_t *ind = lv_indev_get_act();
@@ -85,6 +100,10 @@ static void gallery_event_cb(lv_event_t *e) {
     touch_start_y = p.y;
     touch_start_x = p.x;
   } else if (code == LV_EVENT_RELEASED) {
+    /* Skip if in fullscreen mode */
+    if (is_fullscreen)
+      return;
+
     lv_indev_t *ind = lv_indev_get_act();
     lv_point_t p;
     if (ind)
@@ -111,11 +130,9 @@ static void gallery_event_cb(lv_event_t *e) {
       }
     }
   }
-}
-
-/**
- * @brief Previous image button callback
- */
+} /**
+   * @brief Previous image button callback
+   */
 static void btn_prev_cb(lv_event_t *e) {
   (void)e;
   if (image_count == 0)
@@ -183,6 +200,10 @@ static void display_current_image(void) {
   lv_obj_t *img = lv_img_create(img_container);
   lv_img_set_src(img, image_list[current_index]);
   lv_obj_center(img);
+
+  /* Make image clickable to enter fullscreen */
+  lv_obj_add_flag(img, LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_add_event_cb(img, img_click_cb, LV_EVENT_CLICKED, NULL);
 
   /* Update title and info */
   if (lbl_title) {
@@ -341,7 +362,7 @@ void ui_gallery_init(void) {
   lv_obj_set_style_bg_opa(scr_gallery, LV_OPA_COVER, 0);
 
   /* Header with title */
-  lv_obj_t *hdr = lv_obj_create(scr_gallery);
+  hdr = lv_obj_create(scr_gallery);
   lv_obj_set_size(hdr, LV_PCT(100), 60);
   lv_obj_align(hdr, LV_ALIGN_TOP_MID, 0, 0);
   lv_obj_set_style_bg_color(hdr, lv_color_hex(0x1C1C1E), 0);
@@ -365,7 +386,7 @@ void ui_gallery_init(void) {
   lv_obj_clear_flag(img_container, LV_OBJ_FLAG_SCROLLABLE);
 
   /* Bottom control bar */
-  lv_obj_t *ctrl_bar = lv_obj_create(scr_gallery);
+  ctrl_bar = lv_obj_create(scr_gallery);
   lv_obj_set_size(ctrl_bar, LV_PCT(100), 80);
   lv_obj_align(ctrl_bar, LV_ALIGN_BOTTOM_MID, 0, 0);
   lv_obj_set_style_bg_color(ctrl_bar, lv_color_hex(0x1C1C1E), 0);
@@ -458,4 +479,152 @@ void ui_gallery_hide(void) {
 void ui_gallery_refresh(void) {
   current_index = 0;
   display_current_image();
+}
+
+/**
+ * @brief Image click callback - enter fullscreen mode
+ */
+static void img_click_cb(lv_event_t *e) {
+  (void)e;
+  enter_fullscreen();
+}
+
+/**
+ * @brief Display image in fullscreen mode
+ */
+static void display_fullscreen_image(void) {
+  if (!fullscreen_container)
+    return;
+
+  /* Clear previous content */
+  lv_obj_clean(fullscreen_container);
+
+  /* Create fullscreen image */
+  lv_obj_t *img = lv_img_create(fullscreen_container);
+  lv_img_set_src(img, image_list[current_index]);
+  lv_obj_center(img);
+
+  printf("[Gallery] Fullscreen image %d/%d\n", current_index + 1, image_count);
+}
+
+/**
+ * @brief Fullscreen mode event handler
+ */
+static void fullscreen_event_cb(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+
+  if (code == LV_EVENT_PRESSED) {
+    lv_indev_t *ind = lv_indev_get_act();
+    lv_point_t p;
+    if (ind)
+      lv_indev_get_point(ind, &p);
+    touch_start_x = p.x;
+    touch_start_y = p.y;
+  } else if (code == LV_EVENT_RELEASED) {
+    lv_indev_t *ind = lv_indev_get_act();
+    lv_point_t p;
+    if (ind)
+      lv_indev_get_point(ind, &p);
+
+    int dx = p.x - touch_start_x;
+    int dy = p.y - touch_start_y;
+
+    /* Determine swipe direction */
+    if (abs(dy) > abs(dx)) {
+      /* Vertical swipe */
+      if (dy > 80) {
+        /* Down swipe: exit fullscreen */
+        exit_fullscreen();
+      }
+    } else {
+      /* Horizontal swipe in fullscreen */
+      if (dx < -100) {
+        /* Left swipe: next image */
+        int new_index = current_index + 1;
+        if (new_index >= image_count)
+          new_index = 0;
+        current_index = new_index;
+        display_fullscreen_image();
+        save_gallery_state();
+      } else if (dx > 100) {
+        /* Right swipe: previous image */
+        int new_index = current_index - 1;
+        if (new_index < 0)
+          new_index = image_count - 1;
+        current_index = new_index;
+        display_fullscreen_image();
+        save_gallery_state();
+      }
+    }
+  }
+}
+
+/**
+ * @brief Enter fullscreen mode
+ */
+static void enter_fullscreen(void) {
+  if (is_fullscreen)
+    return;
+
+  is_fullscreen = true;
+
+  /* Hide header and control bar */
+  if (hdr)
+    lv_obj_add_flag(hdr, LV_OBJ_FLAG_HIDDEN);
+  if (ctrl_bar)
+    lv_obj_add_flag(ctrl_bar, LV_OBJ_FLAG_HIDDEN);
+  if (img_container)
+    lv_obj_add_flag(img_container, LV_OBJ_FLAG_HIDDEN);
+
+  /* Create fullscreen container */
+  fullscreen_container = lv_obj_create(scr_gallery);
+  lv_obj_set_size(fullscreen_container, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_color(fullscreen_container, lv_color_hex(0x000000), 0);
+  lv_obj_set_style_bg_opa(fullscreen_container, LV_OPA_COVER, 0);
+  lv_obj_set_style_border_width(fullscreen_container, 0, 0);
+  lv_obj_set_style_pad_all(fullscreen_container, 0, 0);
+  lv_obj_clear_flag(fullscreen_container, LV_OBJ_FLAG_SCROLLABLE);
+
+  /* Add event handler for fullscreen gestures */
+  lv_obj_add_event_cb(fullscreen_container, fullscreen_event_cb, LV_EVENT_ALL,
+                      NULL);
+
+  /* Display current image in fullscreen */
+  display_fullscreen_image();
+
+  /* Pause slideshow in fullscreen */
+  if (is_playing) {
+    stop_slideshow();
+  }
+
+  printf("[Gallery] Entered fullscreen mode\n");
+}
+
+/**
+ * @brief Exit fullscreen mode
+ */
+static void exit_fullscreen(void) {
+  if (!is_fullscreen)
+    return;
+
+  is_fullscreen = false;
+
+  /* Delete fullscreen container */
+  if (fullscreen_container) {
+    lv_obj_del(fullscreen_container);
+    fullscreen_container = NULL;
+  }
+
+  /* Show header and control bar */
+  if (hdr)
+    lv_obj_clear_flag(hdr, LV_OBJ_FLAG_HIDDEN);
+  if (ctrl_bar)
+    lv_obj_clear_flag(ctrl_bar, LV_OBJ_FLAG_HIDDEN);
+  if (img_container)
+    lv_obj_clear_flag(img_container, LV_OBJ_FLAG_HIDDEN);
+
+  /* Refresh normal view */
+  display_current_image();
+
+  printf("[Gallery] Exited fullscreen mode\n");
 }
