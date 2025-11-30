@@ -271,7 +271,21 @@ static void slideshow_timer_cb(lv_timer_t *timer) {
   (void)timer;
   if (!is_playing)
     return;
-  btn_next_cb(NULL);
+
+  /* Advance to next image */
+  int new_index = current_index + 1;
+  if (new_index >= image_count)
+    new_index = 0;
+  current_index = new_index;
+
+  /* Update display based on current mode */
+  if (is_fullscreen) {
+    display_fullscreen_image();
+  } else {
+    display_image_with_animation(current_index, lv_anim_path_ease_in_out);
+  }
+
+  save_gallery_state();
 }
 
 /**
@@ -592,11 +606,6 @@ static void enter_fullscreen(void) {
   /* Display current image in fullscreen */
   display_fullscreen_image();
 
-  /* Pause slideshow in fullscreen */
-  if (is_playing) {
-    stop_slideshow();
-  }
-
   printf("[Gallery] Entered fullscreen mode\n");
 }
 
@@ -625,6 +634,14 @@ static void exit_fullscreen(void) {
 
   /* Refresh normal view */
   display_current_image();
+
+  /* Resume slideshow if it was playing */
+  if (is_playing) {
+    /* Update play/pause button label */
+    if (lbl_play_pause) {
+      lv_label_set_text(lbl_play_pause, "暂停");
+    }
+  }
 
   printf("[Gallery] Exited fullscreen mode\n");
 }
