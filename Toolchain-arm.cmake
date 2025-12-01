@@ -15,7 +15,6 @@ SET(CMAKE_C_COMPILER   ${TOOLCHAIN_PREFIX}gcc)
 SET(CMAKE_CXX_COMPILER ${TOOLCHAIN_PREFIX}g++) 
 
 # 3. 设置系统根目录 (Sysroot)
-# 🚨 关键路径：从 arm-linux-gnueabihf-gcc -v 输出的 --with-sysroot 中提取
 SET(CMAKE_SYSROOT /usr/arm-linux-gnueabihf) 
 
 # 4. 查找根目录配置 (防止 CMake 搜索主机系统的库)
