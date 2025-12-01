@@ -9,6 +9,7 @@
 #include "app_config.h"
 #include "third_party/lvgl/lvgl.h"
 
+#include "app/alarm.h"
 #include "app/data_service.h"
 #include "app/ui/ui_gallery.h"
 #include "app/ui/ui_music.h"
@@ -124,6 +125,14 @@ void set_initial_background(lv_obj_t *scr) {
 
 void run_demo_module(void) {
   printf("[Project] Smart Desk Gadget Starting...\n");
+
+  // 0. Ensure data directories exist
+  system("mkdir -p /root/data");
+  system("mkdir -p data");
+
+  // 0.1 Initialize alarm module with JSON persistence
+  alarm_init("/root/data");
+  printf("[Alarm] Initialized with persistent storage\n");
 
   // 1. LVGL 初始化
   lv_init();
