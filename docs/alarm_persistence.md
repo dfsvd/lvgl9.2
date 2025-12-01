@@ -1,11 +1,63 @@
 # 闹钟持久化存储说明
 
 ## 概述
-闹钟模块已实现完整的 JSON 格式持久化存储功能。
+闹钟模块已实现完整的 JSON 格式持久化存储功能和闹铃提醒。
 
 ## 存储位置
 - **文件路径**: `/root/data/alarms.json`
 - **备份文件**: `/root/data/alarms.json.tmp` (保存时的临时文件)
+
+## 闹铃功能
+
+### 触发机制
+- 系统每秒检查一次是否有到期闹钟
+- 检查逻辑在主循环中执行（`demo_module.c`）
+- 使用 `alarm_check_due()` 函数进行检查
+
+### 闹铃提醒
+当闹钟触发时会：
+1. **显示全局弹窗**：
+   - 半透明黑色背景遮罩
+   - 白色圆角通知框
+   - 显示铃铛图标、"闹钟"标题和时间
+   - 提供"贪睡"和"关闭"两个按钮
+
+2. **播放闹钟音乐**：
+   - 使用 `audio_player` 模块播放
+   - 音频文件路径：`/root/data/music/闹钟.flac`
+   - 使用 mplayer 的 OSS 驱动
+   - 点击"关闭"按钮会停止播放
+
+### 弹窗按钮
+- **贪睡按钮**（左侧，灰色）：
+  - 暂停闹铃音乐
+  - 关闭弹窗
+  - TODO: 未来可添加延迟再次提醒功能
+
+- **关闭按钮**（右侧，红色）：
+  - 完全关闭闹钟提醒
+  - 停止播放音乐
+  - 关闭弹窗
+
+### 技术实现
+```c
+// 注册闹钟触发回调
+alarm_register_trigger_cb(on_alarm_triggered);
+
+// 主循环中每秒检查
+time_t last_alarm_check = 0;
+while (1) {
+    lv_timer_handler();
+    
+    time_t now = time(NULL);
+    if (now != last_alarm_check) {
+        last_alarm_check = now;
+        alarm_check_due();
+    }
+    
+    usleep(5000);
+}
+```
 
 ## JSON 数据格式
 ```json

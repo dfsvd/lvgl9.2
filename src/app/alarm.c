@@ -232,6 +232,9 @@ void alarm_register_trigger_cb(void (*cb)(const alarm_t *a)) {
 static int should_trigger(const alarm_t *a, struct tm *tm) {
   if (!a->enabled)
     return 0;
+  /* Only trigger at the 0th second to avoid repeated triggers */
+  if (tm->tm_sec != 0)
+    return 0;
   if (a->hour == tm->tm_hour && a->minute == tm->tm_min) {
     // check repeat
     if (a->repeat[tm->tm_wday])

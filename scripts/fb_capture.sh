@@ -101,20 +101,26 @@ if [[ -z "$visible_w" || -z "$visible_h" ]]; then
 fi
 
 echo "Triggering remote framebuffer dump to ${REMOTE_RAW}..."
-ssh "$HOST" "dd if=/dev/fb0 of=${REMOTE_RAW} bs=4096 conv=sync" || {
+# Remove old file first to avoid cache
+ssh "$HOST" "rm -f ${REMOTE_RAW} && dd if=/dev/fb0 of=${REMOTE_RAW} bs=4096 conv=sync" || {
   echo "Remote dd failed" >&2; exit 4
 }
 
 echo "Copying ${REMOTE_RAW} to local directory..."
+# Remove old local file and force fresh copy
+rm -f ./fb.raw
 scp "$HOST:${REMOTE_RAW}" ./fb.raw || { echo "scp failed" >&2; exit 5 }
 
 echo "Converting raw framebuffer to PNG (${virtual_w}x${virtual_h} -> crop ${visible_w}x${visible_h})"
-VFILT="crop=${visible_w}:${visible_h}:0:0"
+# Use Y offset 480 to capture the active display buffer (second buffer)
+VFILT="crop=${visible_w}:${visible_h}:0:480"
 if [[ $VFLIP -eq 1 ]]; then
   VFILT+",vflip"
 fi
 
-ffmpeg -f rawvideo -pixel_format ${PIXFMT} -video_size ${virtual_w}x${virtual_h} -i fb.raw -vf "${VFILT}" -frames:v 1 "${OUT}"
+# Remove old output file to ensure fresh conversion
+rm -f "${OUT}"
+ffmpeg -f rawvideo -pixel_format ${PIXFMT} -video_size ${virtual_w}x${virtual_h} -i fb.raw -vf "${VFILT}" -frames:v 1 "${OUT}" -y
 
 echo "Generated ${OUT}"
 

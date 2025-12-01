@@ -123,7 +123,7 @@ bool audio_init(const char *mplayer_path, const char *ao_driver) {
     const char *ao = ao_driver ? ao_driver : "oss";
     execlp(mplayer_path ? mplayer_path : "mplayer",
            mplayer_path ? mplayer_path : "mplayer", "-slave", "-idle", "-quiet",
-           "-vo", "null", "-ao", ao, (char *)NULL);
+           "-novideo", "-ao", ao, (char *)NULL);
     perror("execlp mplayer failed");
     _exit(127);
   }
