@@ -145,6 +145,12 @@ static long download_expected_size = 0;
 static lv_obj_t *download_btn_active = NULL;
 static lv_timer_t *download_poll_timer = NULL;
 
+// 下载信息结构体（用于事件回调传递数据）
+typedef struct {
+  char *name;
+  long size;
+} download_info_t;
+
 static void format_time(int s, char *buf, size_t len) {
   int m = s / 60;
   int sec = s % 60;
@@ -488,6 +494,7 @@ static void download_poll_cb(lv_timer_t *t) {
   FILE *f = fopen(download_path, "rb");
   if (!f) {
     // 文件尚未创建，继续等待
+    printf("[Poll] File not yet created: %s\n", download_path);
     return;
   }
 
@@ -495,8 +502,12 @@ static void download_poll_cb(lv_timer_t *t) {
   long current_size = ftell(f);
   fclose(f);
 
+  printf("[Poll] Current: %ld / Expected: %ld bytes\n", current_size,
+         download_expected_size);
+
   if (current_size >= download_expected_size && download_expected_size > 0) {
     // 下载完成
+    printf("[Poll] Download complete!\n");
     lv_label_set_text(lv_obj_get_child(download_btn_active, 0), "完成");
     is_downloading = false;
     download_btn_active = NULL;
@@ -524,34 +535,44 @@ static void rebuild_playlist_after_download(void) {
 
 static void download_track_cb(lv_event_t *e) {
   if (is_downloading) {
-    // 已有下载任务，禁止并发
+    printf("[Download] Already downloading, ignoring click\n");
     return;
   }
 
-  const char *name = (const char *)lv_event_get_user_data(e);
-  if (!name)
+  download_info_t *info = (download_info_t *)lv_event_get_user_data(e);
+  if (!info || !info->name) {
+    printf("[Download] Error: no download info\n");
     return;
+  }
 
-  // 从用户数据中获取预期大小（需要修改 build_remote_list_ui 传递）
-  // 暂时从 JSON 重新解析或使用全局缓存，这里简化为直接启动
+  printf("[Download] Start: %s (size: %ld bytes)\n", info->name, info->size);
 
-  char url[512];
-  snprintf(url, sizeof(url), "%s/%s", REMOTE_MUSIC_BASE_URL, name);
-  snprintf(download_path, sizeof(download_path), "/root/data/music/%s", name);
+  snprintf(download_path, sizeof(download_path), "/root/data/music/%s",
+           info->name);
+  download_expected_size = info->size;
+
+  printf("[Download] Path: %s\n", download_path);
+  printf("[Download] Expected size: %ld\n", download_expected_size);
 
   lv_obj_t *btn = lv_event_get_target(e);
   lv_label_set_text(lv_obj_get_child(btn, 0), "0%");
 
-  int rc = network_download_file_bg(url, download_path);
+  // 传递基础 URL 和文件名，让 network 层处理编码
+  int rc = network_download_file_bg(REMOTE_MUSIC_BASE_URL, info->name,
+                                    download_path);
+  printf("[Download] network_download_file_bg returned: %d\n", rc);
+
   if (rc == 0) {
     is_downloading = true;
     download_btn_active = btn;
     // 启动轮询定时器（每秒检查一次）
     if (!download_poll_timer) {
       download_poll_timer = lv_timer_create(download_poll_cb, 1000, NULL);
+      printf("[Download] Poll timer created\n");
     }
   } else {
     lv_label_set_text(lv_obj_get_child(btn, 0), "失败");
+    printf("[Download] Failed to start background download\n");
   }
 }
 
@@ -609,11 +630,16 @@ static void build_remote_list_ui(const char *json) {
     lv_obj_t *btn_dl = lv_btn_create(row);
     lv_obj_set_size(btn_dl, 70, 30);
     lv_obj_set_pos(btn_dl, 650, 0);
-    char *name_copy = strdup(fname);
-    lv_obj_add_event_cb(btn_dl, download_track_cb, LV_EVENT_CLICKED,
-                        (void *)strdup(fname));
+
+    // 创建下载信息结构体（包含文件名和大小）
+    download_info_t *dl_info = malloc(sizeof(download_info_t));
+    dl_info->name = strdup(fname);
+    dl_info->size = cJSON_IsNumber(sz) ? (long)sz->valuedouble : 0;
+
+    lv_obj_add_event_cb(btn_dl, download_track_cb, LV_EVENT_CLICKED, dl_info);
     lv_obj_t *lbl_dl = lv_label_create(btn_dl);
     lv_label_set_text(lbl_dl, "下载");
+    lv_obj_set_style_text_font(lbl_dl, &PingFangSC_Regular_14, 0);
     y += 50;
   }
   cJSON_Delete(root);

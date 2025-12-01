@@ -93,17 +93,31 @@ int network_download_file(const char *url, const char *local_path) {
 }
 
 // 后台下载，返回 0 成功启动
-int network_download_file_bg(const char *url, const char *local_path) {
-  char *encoded_url = url_encode(url);
-  if (!encoded_url)
+// base_url: 如 "http://8.217.250.241/music"
+// filename: 如 "追梦人 - 凤飞飞.flac"
+int network_download_file_bg(const char *base_url, const char *filename,
+                             const char *local_path) {
+  // 只对文件名进行 URL 编码
+  char *encoded_filename = url_encode(filename);
+  if (!encoded_filename) {
+    fprintf(stderr, "[Network] URL encode failed\n");
     return -1;
+  }
+
+  // 拼接完整 URL：base_url + "/" + encoded_filename
+  char full_url[1024];
+  snprintf(full_url, sizeof(full_url), "%s/%s", base_url, encoded_filename);
+  free(encoded_filename);
 
   char command[2048];
   snprintf(command, sizeof(command),
            "nohup curl -s -k -o \"%s\" \"%s\" >/dev/null 2>&1 &", local_path,
-           encoded_url);
-  free(encoded_url);
+           full_url);
+
+  fprintf(stderr, "[Network] Full URL: %s\n", full_url);
+  fprintf(stderr, "[Network] Executing command: %s\n", command);
 
   int rc = system(command);
+  fprintf(stderr, "[Network] system() returned: %d\n", rc);
   return (rc == 0) ? 0 : -1;
 }

@@ -19,7 +19,11 @@ int network_download_file(const char *url, const char *local_path);
 
 /**
  * @brief 后台执行 cURL 下载文件
+ * @param base_url 基础 URL（如 "http://8.217.250.241/music"）
+ * @param filename 文件名（如 "追梦人 - 凤飞飞.flac"，会自动 URL 编码）
+ * @param local_path 本地保存路径
  */
-int network_download_file_bg(const char *url, const char *local_path);
+int network_download_file_bg(const char *base_url, const char *filename,
+                             const char *local_path);
 
 #endif // NETWORK_H
