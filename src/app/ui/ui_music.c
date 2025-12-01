@@ -8,6 +8,7 @@
 #include "fonts.h"
 #include "lvgl.h"
 #include <dirent.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -275,7 +276,7 @@ static void music_overlay_event(lv_event_t *e) {
       ui_music_hide();
     } else if (dir == LV_DIR_LEFT) {
       ui_video_show();
-    } else if (dir == LV_DIR_TOP) {
+    } else if (dir == LV_DIR_BOTTOM) {
       ui_remote_show();
     }
     return;
@@ -301,7 +302,7 @@ static void music_overlay_event(lv_event_t *e) {
       ui_video_show();
       return;
     }
-    if (touch_start_y_music - p.y > 180) { /* up swipe threshold */
+    if (p.y - touch_start_y_music > 180) { /* down swipe threshold */
       ui_remote_show();
       return;
     }
@@ -508,7 +509,8 @@ static void download_poll_cb(lv_timer_t *t) {
   if (current_size >= download_expected_size && download_expected_size > 0) {
     // 下载完成
     printf("[Poll] Download complete!\n");
-    lv_label_set_text(lv_obj_get_child(download_btn_active, 0), "完成");
+    lv_label_set_text(lv_obj_get_child(download_btn_active, 0), "已下载");
+    lv_obj_add_state(download_btn_active, LV_STATE_DISABLED);
     is_downloading = false;
     download_btn_active = NULL;
     if (download_poll_timer) {
@@ -545,10 +547,18 @@ static void download_track_cb(lv_event_t *e) {
     return;
   }
 
-  printf("[Download] Start: %s (size: %ld bytes)\n", info->name, info->size);
-
+  // 检查文件是否已存在
   snprintf(download_path, sizeof(download_path), "/root/data/music/%s",
            info->name);
+  if (access(download_path, F_OK) == 0) {
+    printf("[Download] File already exists: %s\n", download_path);
+    lv_obj_t *btn = lv_event_get_target(e);
+    lv_label_set_text(lv_obj_get_child(btn, 0), "已下载");
+    lv_obj_add_state(btn, LV_STATE_DISABLED);
+    return;
+  }
+
+  printf("[Download] Start: %s (size: %ld bytes)\n", info->name, info->size);
   download_expected_size = info->size;
 
   printf("[Download] Path: %s\n", download_path);
@@ -611,13 +621,34 @@ static void build_remote_list_ui(const char *json) {
     if (!cJSON_IsString(n))
       continue;
     const char *fname = n->valuestring;
+
+    // 去除扩展名
+    char name_no_ext[256];
+    strncpy(name_no_ext, fname, sizeof(name_no_ext) - 1);
+    name_no_ext[sizeof(name_no_ext) - 1] = '\0';
+    char *dot = strrchr(name_no_ext, '.');
+    if (dot && (strcasecmp(dot, ".flac") == 0 || strcasecmp(dot, ".mp3") == 0 ||
+                strcasecmp(dot, ".wav") == 0)) {
+      *dot = '\0';
+    }
+
+    // 限制40字符，超出省略
+    char display_name[64];
+    if (strlen(name_no_ext) > 40) {
+      strncpy(display_name, name_no_ext, 40);
+      display_name[40] = '\0';
+      strcat(display_name, "...");
+    } else {
+      strcpy(display_name, name_no_ext);
+    }
+
     char line[256];
     cJSON *sz = cJSON_GetObjectItem(it, "size");
     if (cJSON_IsNumber(sz)) {
       int mb = (int)(sz->valuedouble / (1024 * 1024));
-      snprintf(line, sizeof(line), "%s (%dMB)", fname, mb);
+      snprintf(line, sizeof(line), "%s (%dMB)", display_name, mb);
     } else {
-      snprintf(line, sizeof(line), "%s", fname);
+      snprintf(line, sizeof(line), "%s", display_name);
     }
     lv_obj_t *row = lv_obj_create(remote_list_container);
     lv_obj_set_size(row, 770, 100);
@@ -638,7 +669,17 @@ static void build_remote_list_ui(const char *json) {
 
     lv_obj_add_event_cb(btn_dl, download_track_cb, LV_EVENT_CLICKED, dl_info);
     lv_obj_t *lbl_dl = lv_label_create(btn_dl);
-    lv_label_set_text(lbl_dl, "下载");
+
+    // 检查本地文件是否已存在
+    char local_check[512];
+    snprintf(local_check, sizeof(local_check), "/root/data/music/%s", fname);
+    if (access(local_check, F_OK) == 0) {
+      lv_label_set_text(lbl_dl, "已下载");
+      lv_obj_add_state(btn_dl, LV_STATE_DISABLED);
+    } else {
+      lv_label_set_text(lbl_dl, "下载");
+    }
+
     lv_obj_set_style_text_font(lbl_dl, &PingFangSC_Regular_14, 0);
     y += 50;
   }
@@ -656,9 +697,10 @@ static void remote_overlay_event(lv_event_t *e) {
     if (!ind)
       return;
     lv_dir_t dir = lv_indev_get_gesture_dir(ind);
-    if (dir == LV_DIR_BOTTOM) {
+    if (dir == LV_DIR_RIGHT) {
       scan_music_dir("/root/data/music");
-      ui_music_show();
+      // 直接加载音乐界面，不改变 scr_prev
+      lv_scr_load_anim(scr_music, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
     }
     return;
   }
@@ -667,6 +709,7 @@ static void remote_overlay_event(lv_event_t *e) {
     lv_point_t p;
     if (ind)
       lv_indev_get_point(ind, &p);
+    touch_start_x_music = p.x;
     touch_start_y_remote = p.y;
   } else if (code == LV_EVENT_RELEASED) {
     if (is_downloading) {
@@ -677,9 +720,14 @@ static void remote_overlay_event(lv_event_t *e) {
     lv_point_t p;
     if (ind)
       lv_indev_get_point(ind, &p);
-    if (p.y - touch_start_y_remote > 180) {
+
+    // 右滑180且上下滑动不超过20
+    lv_coord_t dx = p.x - touch_start_x_music;
+    lv_coord_t dy = p.y - touch_start_y_remote;
+    if (dx > 180 && abs(dy) <= 20) {
       scan_music_dir("/root/data/music");
-      ui_music_show();
+      // 直接加载音乐界面，不改变 scr_prev
+      lv_scr_load_anim(scr_music, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
     }
   }
 }
