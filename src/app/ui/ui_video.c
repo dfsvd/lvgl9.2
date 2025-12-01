@@ -11,6 +11,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Declare the zoo image resource */
+LV_IMG_DECLARE(zoo);
+
 static lv_obj_t *scr_video = NULL;
 static lv_obj_t *scr_prev = NULL;
 
@@ -132,6 +135,13 @@ void ui_video_init(void) {
   lv_obj_set_style_bg_opa(video_area, LV_OPA_COVER, 0);
   lv_obj_set_style_border_width(video_area, 0, 0);
   lv_obj_set_style_radius(video_area, 0, 0);
+  lv_obj_set_style_pad_all(video_area, 0, 0);
+  lv_obj_clear_flag(video_area, LV_OBJ_FLAG_SCROLLABLE);
+
+  // Add zoo image as placeholder/background
+  lv_obj_t *img_zoo = lv_img_create(video_area);
+  lv_img_set_src(img_zoo, &zoo);
+  lv_obj_center(img_zoo);
 
   // Bottom: control bar 800x80
   ctrl_bar = lv_obj_create(scr_video);
