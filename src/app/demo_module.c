@@ -261,8 +261,8 @@ static void on_alarm_triggered(const alarm_t *a) {
     alarm_player_pid = fork();
     if (alarm_player_pid == 0) {
       /* Child process - execute mplayer */
-      execlp("mplayer", "mplayer", "-novideo", "-ao", "oss", "-loop", "0",
-             a->sound, (char *)NULL);
+      execlp("mplayer", "mplayer", "-novideo", "-ao", "oss", "-ss", "22",
+             "-loop", "0", a->sound, (char *)NULL);
       /* If execlp fails */
       perror("[Alarm] Failed to exec mplayer");
       _exit(1);
