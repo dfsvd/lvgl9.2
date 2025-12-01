@@ -27,6 +27,18 @@ static lv_obj_t *dlg_overlay = NULL;
 static lv_obj_t *dlg = NULL;
 static alarm_t dlg_alarm;
 static bool dlg_is_add = false;
+static lv_obj_t *dlg_lbl_hour = NULL;
+static lv_obj_t *dlg_lbl_minute = NULL;
+static lv_obj_t *dlg_repeat_btns[7] = {NULL};
+
+/* Forward declarations for dialog controls */
+static void update_time_display(void);
+static void hour_inc_cb(lv_event_t *e);
+static void hour_dec_cb(lv_event_t *e);
+static void minute_inc_cb(lv_event_t *e);
+static void minute_dec_cb(lv_event_t *e);
+static void repeat_toggle_cb(lv_event_t *e);
+static void dlg_delete_cb(lv_event_t *e);
 
 static void alarm_overlay_event(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
@@ -82,12 +94,76 @@ static void close_dialog(void) {
   if (dlg) {
     lv_obj_del(dlg);
     dlg = NULL;
+    dlg_lbl_hour = NULL;
+    dlg_lbl_minute = NULL;
+    for (int i = 0; i < 7; i++) {
+      dlg_repeat_btns[i] = NULL;
+    }
   }
   if (dlg_overlay) {
     lv_obj_del(dlg_overlay);
     dlg_overlay = NULL;
   }
   ui_alarm_refresh();
+}
+
+/* Update time display labels */
+static void update_time_display(void) {
+  if (!dlg_lbl_hour || !dlg_lbl_minute)
+    return;
+  char buf[8];
+  snprintf(buf, sizeof(buf), "%02d", dlg_alarm.hour);
+  lv_label_set_text(dlg_lbl_hour, buf);
+  snprintf(buf, sizeof(buf), "%02d", dlg_alarm.minute);
+  lv_label_set_text(dlg_lbl_minute, buf);
+}
+
+/* Hour increment */
+static void hour_inc_cb(lv_event_t *e) {
+  (void)e;
+  dlg_alarm.hour = (dlg_alarm.hour + 1) % 24;
+  update_time_display();
+}
+
+/* Hour decrement */
+static void hour_dec_cb(lv_event_t *e) {
+  (void)e;
+  dlg_alarm.hour = (dlg_alarm.hour + 23) % 24;
+  update_time_display();
+}
+
+/* Minute increment */
+static void minute_inc_cb(lv_event_t *e) {
+  (void)e;
+  dlg_alarm.minute = (dlg_alarm.minute + 1) % 60;
+  update_time_display();
+}
+
+/* Minute decrement */
+static void minute_dec_cb(lv_event_t *e) {
+  (void)e;
+  dlg_alarm.minute = (dlg_alarm.minute + 59) % 60;
+  update_time_display();
+}
+
+/* Repeat day toggle */
+static void repeat_toggle_cb(lv_event_t *e) {
+  void *ud = lv_event_get_user_data(e);
+  int day = (int)(size_t)ud;
+  if (day < 0 || day >= 7)
+    return;
+  dlg_alarm.repeat[day] = !dlg_alarm.repeat[day];
+  /* Update button style */
+  lv_obj_t *btn = dlg_repeat_btns[day];
+  if (dlg_alarm.repeat[day]) {
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x007AFF), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(btn, 0),
+                                lv_color_hex(0xFFFFFF), 0);
+  } else {
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0xE5E5EA), 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(btn, 0),
+                                lv_color_hex(0x8E8E93), 0);
+  }
 }
 
 /* Dialog cancel callback */
@@ -108,63 +184,197 @@ static void dlg_save_cb(lv_event_t *e) {
   close_dialog();
 }
 
+/* Dialog delete callback */
+static void dlg_delete_cb(lv_event_t *e) {
+  (void)e;
+  if (!dlg_is_add) {
+    alarm_remove(dlg_alarm.id);
+    alarm_save_now();
+  }
+  close_dialog();
+}
+
 /* Create and show edit/add dialog. If a is NULL, opens add dialog with defaults
  */
 static void show_edit_dialog(const alarm_t *a, bool is_add) {
   if (dlg)
     return; /* already open */
   dlg_is_add = is_add;
-  if (a)
+  if (a) {
     dlg_alarm = *a;
-  else {
+  } else {
     memset(&dlg_alarm, 0, sizeof(dlg_alarm));
     time_t now = time(NULL);
     snprintf(dlg_alarm.id, sizeof(dlg_alarm.id), "a%ld", now);
     dlg_alarm.hour = 7;
     dlg_alarm.minute = 0;
     dlg_alarm.enabled = true;
+    dlg_alarm.snooze_minutes = 10;
+    strcpy(dlg_alarm.sound, "/root/data/music/闹钟.flac");
+    dlg_alarm.remove_after_trigger = false;
   }
 
   /* overlay to capture outside clicks */
   dlg_overlay = lv_obj_create(scr_alarm);
   lv_obj_set_size(dlg_overlay, LV_PCT(100), LV_PCT(100));
+  lv_obj_set_style_bg_color(dlg_overlay, lv_color_hex(0x000000), 0);
   lv_obj_set_style_bg_opa(dlg_overlay, LV_OPA_50, 0);
   lv_obj_add_event_cb(dlg_overlay, dlg_cancel_cb, LV_EVENT_CLICKED, NULL);
 
   dlg = lv_obj_create(scr_alarm);
-  lv_obj_set_size(dlg, LV_PCT(80), LV_PCT(60));
+  lv_obj_set_size(dlg, 520, 420);
   lv_obj_center(dlg);
+  lv_obj_set_style_bg_color(dlg, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_set_style_radius(dlg, 16, 0);
+  lv_obj_set_style_border_width(dlg, 0, 0);
+  lv_obj_set_style_pad_all(dlg, 20, 0);
+  lv_obj_clear_flag(dlg, LV_OBJ_FLAG_SCROLLABLE);
 
+  /* Title */
   lv_obj_t *title = lv_label_create(dlg);
   lv_label_set_text(title, is_add ? "添加闹钟" : "编辑闹钟");
-  lv_obj_set_style_text_font(title, &LXGWWenKaiMono_Light_18, 0);
-  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
+  lv_obj_set_style_text_font(title, &PingFangSC_Regular_24, 0);
+  lv_obj_set_style_text_color(title, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 0);
 
-  /* Time display (simple) */
-  char timebuf[16];
-  snprintf(timebuf, sizeof(timebuf), "%02d:%02d", dlg_alarm.hour,
-           dlg_alarm.minute);
-  lv_obj_t *lbl_time = lv_label_create(dlg);
-  lv_label_set_text(lbl_time, timebuf);
-  lv_obj_set_style_text_font(lbl_time, &LXGWWenKaiMono_Light_24, 0);
-  lv_obj_align(lbl_time, LV_ALIGN_CENTER, -10, -10);
+  /* Time picker area - centered */
+  int time_y = 50;
+  int center_x = 260; /* dialog width 520 / 2 */
 
-  /* Buttons */
-  lv_obj_t *btn_save = lv_btn_create(dlg);
-  lv_obj_set_size(btn_save, 80, 36);
-  lv_obj_align(btn_save, LV_ALIGN_BOTTOM_RIGHT, -12, -12);
-  lv_obj_t *lbls = lv_label_create(btn_save);
-  lv_label_set_text(lbls, "完成");
-  lv_obj_set_style_text_font(lbls, &LXGWWenKaiMono_Light_14, 0);
-  lv_obj_add_event_cb(btn_save, dlg_save_cb, LV_EVENT_CLICKED, NULL);
+  /* Hour section - centered */
+  lv_obj_t *btn_hour_inc = lv_btn_create(dlg);
+  lv_obj_set_size(btn_hour_inc, 50, 40);
+  lv_obj_set_pos(btn_hour_inc, center_x - 110, time_y);
+  lv_obj_t *lbl_h_inc = lv_label_create(btn_hour_inc);
+  lv_label_set_text(lbl_h_inc, "+");
+  lv_obj_set_style_text_font(lbl_h_inc, &PingFangSC_Regular_24, 0);
+  lv_obj_center(lbl_h_inc);
+  lv_obj_add_event_cb(btn_hour_inc, hour_inc_cb, LV_EVENT_CLICKED, NULL);
 
+  dlg_lbl_hour = lv_label_create(dlg);
+  lv_obj_set_style_text_font(dlg_lbl_hour, &PingFangSC_Semibold_48, 0);
+  lv_obj_set_style_text_color(dlg_lbl_hour, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_set_pos(dlg_lbl_hour, center_x - 105, time_y + 50);
+
+  lv_obj_t *btn_hour_dec = lv_btn_create(dlg);
+  lv_obj_set_size(btn_hour_dec, 50, 40);
+  lv_obj_set_pos(btn_hour_dec, center_x - 110, time_y + 110);
+  lv_obj_t *lbl_h_dec = lv_label_create(btn_hour_dec);
+  lv_label_set_text(lbl_h_dec, "-");
+  lv_obj_set_style_text_font(lbl_h_dec, &PingFangSC_Regular_24, 0);
+  lv_obj_center(lbl_h_dec);
+  lv_obj_add_event_cb(btn_hour_dec, hour_dec_cb, LV_EVENT_CLICKED, NULL);
+
+  /* Colon - centered */
+  lv_obj_t *lbl_colon = lv_label_create(dlg);
+  lv_label_set_text(lbl_colon, ":");
+  lv_obj_set_style_text_font(lbl_colon, &PingFangSC_Semibold_48, 0);
+  lv_obj_set_pos(lbl_colon, center_x - 20, time_y + 50);
+
+  /* Minute section - centered */
+  lv_obj_t *btn_minute_inc = lv_btn_create(dlg);
+  lv_obj_set_size(btn_minute_inc, 50, 40);
+  lv_obj_set_pos(btn_minute_inc, center_x + 10, time_y);
+  lv_obj_t *lbl_m_inc = lv_label_create(btn_minute_inc);
+  lv_label_set_text(lbl_m_inc, "+");
+  lv_obj_set_style_text_font(lbl_m_inc, &PingFangSC_Regular_24, 0);
+  lv_obj_center(lbl_m_inc);
+  lv_obj_add_event_cb(btn_minute_inc, minute_inc_cb, LV_EVENT_CLICKED, NULL);
+
+  dlg_lbl_minute = lv_label_create(dlg);
+  lv_obj_set_style_text_font(dlg_lbl_minute, &PingFangSC_Semibold_48, 0);
+  lv_obj_set_style_text_color(dlg_lbl_minute, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_set_pos(dlg_lbl_minute, center_x + 15, time_y + 50);
+
+  lv_obj_t *btn_minute_dec = lv_btn_create(dlg);
+  lv_obj_set_size(btn_minute_dec, 50, 40);
+  lv_obj_set_pos(btn_minute_dec, center_x + 10, time_y + 110);
+  lv_obj_t *lbl_m_dec = lv_label_create(btn_minute_dec);
+  lv_label_set_text(lbl_m_dec, "-");
+  lv_obj_set_style_text_font(lbl_m_dec, &PingFangSC_Regular_24, 0);
+  lv_obj_center(lbl_m_dec);
+  lv_obj_add_event_cb(btn_minute_dec, minute_dec_cb, LV_EVENT_CLICKED, NULL);
+
+  /* Update initial time display */
+  update_time_display();
+
+  /* Repeat section - two rows, centered */
+  int repeat_y = time_y + 175;
+  lv_obj_t *lbl_repeat = lv_label_create(dlg);
+  lv_label_set_text(lbl_repeat, "重复:");
+  lv_obj_set_style_text_font(lbl_repeat, &PingFangSC_Regular_18, 0);
+  lv_obj_set_pos(lbl_repeat, 30, repeat_y);
+
+  const char *day_names[] = {"日", "一", "二", "三", "四", "五", "六"};
+  for (int i = 0; i < 7; i++) {
+    dlg_repeat_btns[i] = lv_btn_create(dlg);
+    lv_obj_set_size(dlg_repeat_btns[i], 56, 40);
+
+    /* First row: 日一二三 (0-3), Second row: 四五六 (4-6) */
+    int row = (i < 4) ? 0 : 1;
+    int col = (i < 4) ? i : (i - 4);
+    int x_offset = (row == 0) ? 110 : 180; /* Center second row */
+    lv_obj_set_pos(dlg_repeat_btns[i], x_offset + col * 64,
+                   repeat_y - 5 + row * 50);
+
+    lv_obj_t *lbl = lv_label_create(dlg_repeat_btns[i]);
+    lv_label_set_text(lbl, day_names[i]);
+    lv_obj_set_style_text_font(lbl, &PingFangSC_Regular_18, 0);
+    lv_obj_center(lbl);
+
+    /* Set initial style based on repeat state */
+    if (dlg_alarm.repeat[i]) {
+      lv_obj_set_style_bg_color(dlg_repeat_btns[i], lv_color_hex(0x007AFF), 0);
+      lv_obj_set_style_text_color(lbl, lv_color_hex(0xFFFFFF), 0);
+    } else {
+      lv_obj_set_style_bg_color(dlg_repeat_btns[i], lv_color_hex(0xE5E5EA), 0);
+      lv_obj_set_style_text_color(lbl, lv_color_hex(0x8E8E93), 0);
+    }
+
+    lv_obj_add_event_cb(dlg_repeat_btns[i], repeat_toggle_cb, LV_EVENT_CLICKED,
+                        (void *)(size_t)i);
+  }
+
+  /* Bottom buttons */
+  int btn_y_offset = -10;
+
+  /* Cancel button - left */
   lv_obj_t *btn_cancel = lv_btn_create(dlg);
-  lv_obj_set_size(btn_cancel, 80, 36);
-  lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_LEFT, 12, -12);
+  lv_obj_set_size(btn_cancel, 100, 40);
+  lv_obj_align(btn_cancel, LV_ALIGN_BOTTOM_LEFT, 0, btn_y_offset);
+  lv_obj_set_style_bg_color(btn_cancel, lv_color_hex(0xE5E5EA), 0);
   lv_obj_t *lblc = lv_label_create(btn_cancel);
   lv_label_set_text(lblc, "取消");
-  lv_obj_set_style_text_font(lblc, &LXGWWenKaiMono_Light_14, 0);
+  lv_obj_set_style_text_font(lblc, &PingFangSC_Regular_18, 0);
+  lv_obj_set_style_text_color(lblc, lv_color_hex(0x1C1C1E), 0);
+  lv_obj_center(lblc);
   lv_obj_add_event_cb(btn_cancel, dlg_cancel_cb, LV_EVENT_CLICKED, NULL);
+
+  /* Delete button - center (only show in edit mode) */
+  if (!is_add) {
+    lv_obj_t *btn_delete = lv_btn_create(dlg);
+    lv_obj_set_size(btn_delete, 100, 40);
+    lv_obj_align(btn_delete, LV_ALIGN_BOTTOM_MID, 0, btn_y_offset);
+    lv_obj_set_style_bg_color(btn_delete, lv_color_hex(0xFF3B30), 0);
+    lv_obj_t *lbld = lv_label_create(btn_delete);
+    lv_label_set_text(lbld, "删除");
+    lv_obj_set_style_text_font(lbld, &PingFangSC_Regular_18, 0);
+    lv_obj_set_style_text_color(lbld, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_center(lbld);
+    lv_obj_add_event_cb(btn_delete, dlg_delete_cb, LV_EVENT_CLICKED, NULL);
+  }
+
+  /* Save button - right */
+  lv_obj_t *btn_save = lv_btn_create(dlg);
+  lv_obj_set_size(btn_save, 100, 40);
+  lv_obj_align(btn_save, LV_ALIGN_BOTTOM_RIGHT, 0, btn_y_offset);
+  lv_obj_set_style_bg_color(btn_save, lv_color_hex(0x007AFF), 0);
+  lv_obj_t *lbls = lv_label_create(btn_save);
+  lv_label_set_text(lbls, "完成");
+  lv_obj_set_style_text_font(lbls, &PingFangSC_Regular_18, 0);
+  lv_obj_set_style_text_color(lbls, lv_color_hex(0xFFFFFF), 0);
+  lv_obj_center(lbls);
+  lv_obj_add_event_cb(btn_save, dlg_save_cb, LV_EVENT_CLICKED, NULL);
 }
 
 /* Back button removed; use left-swipe to return to previous screen */
