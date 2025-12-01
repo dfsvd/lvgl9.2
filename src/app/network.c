@@ -1,11 +1,38 @@
 // src/app/network.c
 
 #include "network.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define MAX_RESPONSE_SIZE (8 * 1024) // 8KB 固定缓冲区
+
+// URL 编码辅助函数
+static char *url_encode(const char *str) {
+  if (!str)
+    return NULL;
+  size_t len = strlen(str);
+  // 最坏情况每个字符编码为 %XX，需要 3 倍空间
+  char *encoded = malloc(len * 3 + 1);
+  if (!encoded)
+    return NULL;
+
+  char *p = encoded;
+  for (const char *s = str; *s; s++) {
+    unsigned char c = (unsigned char)*s;
+    // 保留字母数字及安全字符
+    if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~' ||
+        c == '/') {
+      *p++ = c;
+    } else {
+      sprintf(p, "%%%02X", c);
+      p += 3;
+    }
+  }
+  *p = '\0';
+  return encoded;
+}
 
 char *network_fetch_data(const char *url) {
   char command[512];
@@ -52,9 +79,31 @@ char *network_fetch_data(const char *url) {
 }
 
 int network_download_file(const char *url, const char *local_path) {
-  char command[512];
-  snprintf(command, sizeof(command), "curl -s -k -o %s \"%s\"", local_path,
-           url);
+  char *encoded_url = url_encode(url);
+  if (!encoded_url)
+    return -1;
+
+  char command[2048];
+  snprintf(command, sizeof(command), "curl -s -k -o \"%s\" \"%s\"", local_path,
+           encoded_url);
+  free(encoded_url);
+
   // system() 返回命令的退出状态
   return system(command);
+}
+
+// 后台下载，返回 0 成功启动
+int network_download_file_bg(const char *url, const char *local_path) {
+  char *encoded_url = url_encode(url);
+  if (!encoded_url)
+    return -1;
+
+  char command[2048];
+  snprintf(command, sizeof(command),
+           "nohup curl -s -k -o \"%s\" \"%s\" >/dev/null 2>&1 &", local_path,
+           encoded_url);
+  free(encoded_url);
+
+  int rc = system(command);
+  return (rc == 0) ? 0 : -1;
 }

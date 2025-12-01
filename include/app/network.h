@@ -10,11 +10,16 @@
  * @param url 完整的请求 URL (包含参数)。
  * @return 成功返回 JSON 字符串指针，失败返回 NULL。
  */
-char* network_fetch_data(const char* url);
+char *network_fetch_data(const char *url);
 
 /**
  * @brief 执行 cURL 下载文件
  */
-int network_download_file(const char* url, const char* local_path);
+int network_download_file(const char *url, const char *local_path);
+
+/**
+ * @brief 后台执行 cURL 下载文件
+ */
+int network_download_file_bg(const char *url, const char *local_path);
 
 #endif // NETWORK_H

@@ -2,7 +2,9 @@
 
 #include "app/ui/ui_music.h"
 #include "app/audio_player.h"
+#include "app/network.h"
 #include "app/ui_video.h"
+#include "cJSON.h"
 #include "fonts.h"
 #include "lvgl.h"
 #include <dirent.h>
@@ -11,6 +13,9 @@
 #include <string.h>
 #include <strings.h>
 #include <unistd.h>
+
+#define REMOTE_MUSIC_BASE_URL "http://8.217.250.241/music"
+#define REMOTE_MUSIC_LIST_URL REMOTE_MUSIC_BASE_URL "/list.json"
 
 static void dump_obj(lv_obj_t *o, const char *name) {
   if (!o) {
@@ -27,7 +32,9 @@ static void dump_obj(lv_obj_t *o, const char *name) {
 
 static lv_obj_t *scr_music = NULL;
 static lv_obj_t *scr_prev = NULL;
+static lv_obj_t *scr_remote = NULL;
 static lv_coord_t touch_start_x_music = 0;
+static lv_coord_t touch_start_y_music = 0;
 
 static lv_obj_t *lbl_title = NULL;
 static lv_obj_t *lbl_artist = NULL;
@@ -126,6 +133,17 @@ static lv_obj_t *btn_prev = NULL;
 static lv_obj_t *btn_play = NULL;
 static lv_obj_t *btn_next = NULL;
 static lv_obj_t *lbl_play_sym = NULL;
+static lv_obj_t *btn_remote = NULL;
+static lv_obj_t *btn_refresh = NULL;
+
+// Remote download screen
+static lv_obj_t *remote_list_container = NULL;
+static lv_coord_t touch_start_y_remote = 0;
+static bool is_downloading = false;
+static char download_path[512];
+static long download_expected_size = 0;
+static lv_obj_t *download_btn_active = NULL;
+static lv_timer_t *download_poll_timer = NULL;
 
 static void format_time(int s, char *buf, size_t len) {
   int m = s / 60;
@@ -236,6 +254,10 @@ static void audio_event_handler(int event) {
   }
 }
 
+// Forward declaration
+static void ui_remote_show(void);
+static void rebuild_playlist_after_download(void);
+
 static void music_overlay_event(lv_event_t *e) {
   lv_event_code_t code = lv_event_get_code(e);
   if (code == LV_EVENT_GESTURE) {
@@ -247,6 +269,8 @@ static void music_overlay_event(lv_event_t *e) {
       ui_music_hide();
     } else if (dir == LV_DIR_LEFT) {
       ui_video_show();
+    } else if (dir == LV_DIR_TOP) {
+      ui_remote_show();
     }
     return;
   }
@@ -257,6 +281,7 @@ static void music_overlay_event(lv_event_t *e) {
     if (ind)
       lv_indev_get_point(ind, &p);
     touch_start_x_music = p.x;
+    touch_start_y_music = p.y;
   } else if (code == LV_EVENT_RELEASED) {
     lv_indev_t *ind = lv_indev_get_act();
     lv_point_t p;
@@ -268,6 +293,10 @@ static void music_overlay_event(lv_event_t *e) {
     }
     if (touch_start_x_music - p.x > 180) { /* left swipe threshold */
       ui_video_show();
+      return;
+    }
+    if (touch_start_y_music - p.y > 180) { /* up swipe threshold */
+      ui_remote_show();
       return;
     }
   }
@@ -448,4 +477,208 @@ void ui_music_hide(void) {
     lv_scr_load_anim(scr_prev, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
     scr_prev = NULL;
   }
+}
+
+// Remote download helpers
+static void download_poll_cb(lv_timer_t *t) {
+  (void)t;
+  if (!is_downloading || !download_btn_active)
+    return;
+
+  FILE *f = fopen(download_path, "rb");
+  if (!f) {
+    // 文件尚未创建，继续等待
+    return;
+  }
+
+  fseek(f, 0, SEEK_END);
+  long current_size = ftell(f);
+  fclose(f);
+
+  if (current_size >= download_expected_size && download_expected_size > 0) {
+    // 下载完成
+    lv_label_set_text(lv_obj_get_child(download_btn_active, 0), "完成");
+    is_downloading = false;
+    download_btn_active = NULL;
+    if (download_poll_timer) {
+      lv_timer_del(download_poll_timer);
+      download_poll_timer = NULL;
+    }
+    rebuild_playlist_after_download();
+  } else if (download_expected_size > 0) {
+    // 显示进度百分比
+    int percent = (int)((current_size * 100) / download_expected_size);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%d%%", percent);
+    lv_label_set_text(lv_obj_get_child(download_btn_active, 0), buf);
+  }
+}
+
+static void rebuild_playlist_after_download(void) {
+  int prev_count = playlist_count;
+  scan_music_dir("/root/data/music");
+  if (playlist_count > prev_count) {
+    playlist_index = playlist_count - 1;
+  }
+}
+
+static void download_track_cb(lv_event_t *e) {
+  if (is_downloading) {
+    // 已有下载任务，禁止并发
+    return;
+  }
+
+  const char *name = (const char *)lv_event_get_user_data(e);
+  if (!name)
+    return;
+
+  // 从用户数据中获取预期大小（需要修改 build_remote_list_ui 传递）
+  // 暂时从 JSON 重新解析或使用全局缓存，这里简化为直接启动
+
+  char url[512];
+  snprintf(url, sizeof(url), "%s/%s", REMOTE_MUSIC_BASE_URL, name);
+  snprintf(download_path, sizeof(download_path), "/root/data/music/%s", name);
+
+  lv_obj_t *btn = lv_event_get_target(e);
+  lv_label_set_text(lv_obj_get_child(btn, 0), "0%");
+
+  int rc = network_download_file_bg(url, download_path);
+  if (rc == 0) {
+    is_downloading = true;
+    download_btn_active = btn;
+    // 启动轮询定时器（每秒检查一次）
+    if (!download_poll_timer) {
+      download_poll_timer = lv_timer_create(download_poll_cb, 1000, NULL);
+    }
+  } else {
+    lv_label_set_text(lv_obj_get_child(btn, 0), "失败");
+  }
+}
+
+static void build_remote_list_ui(const char *json) {
+  if (!scr_remote)
+    return;
+  if (remote_list_container) {
+    lv_obj_del(remote_list_container);
+    remote_list_container = NULL;
+  }
+  remote_list_container = lv_obj_create(scr_remote);
+  lv_obj_set_size(remote_list_container, 780, 430);
+  lv_obj_set_pos(remote_list_container, 10, 40);
+  lv_obj_set_style_bg_color(remote_list_container, lv_color_white(), 0);
+  lv_obj_set_style_border_width(remote_list_container, 0, 0);
+  lv_obj_set_style_pad_all(remote_list_container, 4, 0);
+  lv_obj_set_scrollbar_mode(remote_list_container, LV_SCROLLBAR_MODE_OFF);
+  lv_obj_set_scroll_dir(remote_list_container, LV_DIR_VER);
+
+  if (!json) {
+    lv_obj_t *lbl = lv_label_create(remote_list_container);
+    lv_label_set_text(lbl, "获取失败");
+    return;
+  }
+  cJSON *root = cJSON_Parse(json);
+  if (!root || !cJSON_IsArray(root)) {
+    lv_obj_t *lbl = lv_label_create(remote_list_container);
+    lv_label_set_text(lbl, "解析失败");
+    cJSON_Delete(root);
+    return;
+  }
+  int y = 0;
+  cJSON *it = NULL;
+  cJSON_ArrayForEach(it, root) {
+    cJSON *n = cJSON_GetObjectItem(it, "name");
+    if (!cJSON_IsString(n))
+      continue;
+    const char *fname = n->valuestring;
+    char line[256];
+    cJSON *sz = cJSON_GetObjectItem(it, "size");
+    if (cJSON_IsNumber(sz)) {
+      int mb = (int)(sz->valuedouble / (1024 * 1024));
+      snprintf(line, sizeof(line), "%s (%dMB)", fname, mb);
+    } else {
+      snprintf(line, sizeof(line), "%s", fname);
+    }
+    lv_obj_t *row = lv_obj_create(remote_list_container);
+    lv_obj_set_size(row, 770, 100);
+    lv_obj_set_pos(row, 2, y);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_t *lbl = lv_label_create(row);
+    lv_label_set_text(lbl, line);
+    lv_obj_set_pos(lbl, 6, 10);
+    lv_obj_set_style_text_font(lbl, &PingFangSC_Regular_18, 0);
+    lv_obj_t *btn_dl = lv_btn_create(row);
+    lv_obj_set_size(btn_dl, 70, 30);
+    lv_obj_set_pos(btn_dl, 650, 0);
+    char *name_copy = strdup(fname);
+    lv_obj_add_event_cb(btn_dl, download_track_cb, LV_EVENT_CLICKED,
+                        (void *)strdup(fname));
+    lv_obj_t *lbl_dl = lv_label_create(btn_dl);
+    lv_label_set_text(lbl_dl, "下载");
+    y += 50;
+  }
+  cJSON_Delete(root);
+}
+
+static void remote_overlay_event(lv_event_t *e) {
+  lv_event_code_t code = lv_event_get_code(e);
+  if (code == LV_EVENT_GESTURE) {
+    if (is_downloading) {
+      // 下载中，禁止退出
+      return;
+    }
+    lv_indev_t *ind = lv_indev_get_act();
+    if (!ind)
+      return;
+    lv_dir_t dir = lv_indev_get_gesture_dir(ind);
+    if (dir == LV_DIR_BOTTOM) {
+      scan_music_dir("/root/data/music");
+      ui_music_show();
+    }
+    return;
+  }
+  if (code == LV_EVENT_PRESSED) {
+    lv_indev_t *ind = lv_indev_get_act();
+    lv_point_t p;
+    if (ind)
+      lv_indev_get_point(ind, &p);
+    touch_start_y_remote = p.y;
+  } else if (code == LV_EVENT_RELEASED) {
+    if (is_downloading) {
+      // 下载中，禁止退出
+      return;
+    }
+    lv_indev_t *ind = lv_indev_get_act();
+    lv_point_t p;
+    if (ind)
+      lv_indev_get_point(ind, &p);
+    if (p.y - touch_start_y_remote > 180) {
+      scan_music_dir("/root/data/music");
+      ui_music_show();
+    }
+  }
+}
+
+static void ui_remote_show(void) {
+  if (!scr_remote) {
+    scr_remote = lv_obj_create(NULL);
+    lv_obj_set_size(scr_remote, 800, 480);
+    lv_obj_set_style_bg_color(scr_remote, lv_color_hex(0xe5e7eb), 0);
+    lv_obj_set_style_bg_opa(scr_remote, LV_OPA_COVER, 0);
+    lv_obj_t *title = lv_label_create(scr_remote);
+    lv_label_set_text(title, "远程音乐下载");
+    lv_obj_set_style_text_font(title, &PingFangSC_Semibold_38, 0);
+    lv_obj_set_pos(title, 20, 0);
+    lv_obj_add_event_cb(scr_remote, remote_overlay_event, LV_EVENT_ALL, NULL);
+  }
+  lv_scr_load_anim(scr_remote, LV_SCR_LOAD_ANIM_MOVE_TOP, 300, 0, false);
+  lv_obj_t *loading = lv_label_create(scr_remote);
+  lv_label_set_text(loading, "加载中...");
+  lv_obj_set_pos(loading, 20, 60);
+  char *resp = network_fetch_data(REMOTE_MUSIC_LIST_URL);
+  if (resp) {
+    lv_obj_del(loading);
+  }
+  build_remote_list_ui(resp);
+  if (resp)
+    free(resp);
 }
