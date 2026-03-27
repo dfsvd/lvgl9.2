@@ -29,7 +29,7 @@ Thumbs.db
 *.a
 *.so
 *.log
-core
+/core
 
 # 其他
 *.bak
